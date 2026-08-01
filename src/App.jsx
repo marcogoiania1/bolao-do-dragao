@@ -363,7 +363,10 @@ export default function PalpitaoApp() {
       registrarLog("POST", "/login", 401, body);
       return { status: 401, body };
     }
-    if (!participante.aprovado) {
+    // IMPORTANTE: participantes cadastrados ANTES dessa funcionalidade existir não têm o campo "aprovado"
+    // salvo (fica undefined) — precisam continuar entrando normalmente, como sempre entraram.
+    // Só bloqueia quem foi cadastrado DEPOIS dessa mudança e está explicitamente marcado como pendente (aprovado === false).
+    if (participante.aprovado === false) {
       const body = { erro: "Seu cadastro ainda está aguardando aprovação do Administrador." };
       registrarLog("POST", "/login", 403, body);
       return { status: 403, body };
@@ -2285,13 +2288,13 @@ export default function PalpitaoApp() {
                   <span className="menu-item-text">
                     <strong>Aprovar Participantes</strong>
                     <small>
-                      {users.filter((u) => !u.aprovado).length > 0
-                        ? `${users.filter((u) => !u.aprovado).length} aguardando aprovação`
+                      {users.filter((u) => u.aprovado === false).length > 0
+                        ? `${users.filter((u) => u.aprovado === false).length} aguardando aprovação`
                         : "Nenhum pedido pendente"}
                     </small>
                   </span>
-                  {users.filter((u) => !u.aprovado).length > 0 && (
-                    <span className="badge-pendente">{users.filter((u) => !u.aprovado).length}</span>
+                  {users.filter((u) => u.aprovado === false).length > 0 && (
+                    <span className="badge-pendente">{users.filter((u) => u.aprovado === false).length}</span>
                   )}
                   <ChevronRight size={16} />
                 </button>
@@ -2473,7 +2476,7 @@ export default function PalpitaoApp() {
                     {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
                     <span className="n">{u.nome}</span>
                     {u.is_admin && <Shield size={13} color="#F2C230" />}
-                    {!u.aprovado && <span className="tag-pendente-mini">Aguardando aprovação</span>}
+                    {u.aprovado === false && <span className="tag-pendente-mini">Aguardando aprovação</span>}
                     {currentUser.is_admin && !u.is_admin && (
                       <button className="btn-promover" onClick={() => handlePromoverAdmin(u.id, u.nome)} disabled={promovendoId === u.id}>
                         {promovendoId === u.id ? <Loader2 size={12} className="spin" /> : <><Shield size={11} /> Promover</>}
@@ -2506,10 +2509,10 @@ export default function PalpitaoApp() {
               <>
                 {excluirErro && <div className="msg-error"><AlertCircle size={15} />{excluirErro}</div>}
                 <div className="list">
-                  {users.filter((u) => !u.aprovado).length === 0 && (
+                  {users.filter((u) => u.aprovado === false).length === 0 && (
                     <div className="log-empty">Nenhum cadastro aguardando aprovação no momento.</div>
                   )}
-                  {users.filter((u) => !u.aprovado).map((u) =>
+                  {users.filter((u) => u.aprovado === false).map((u) =>
                     confirmarRecusaId === u.id ? (
                       <div className="list-item confirmar-exclusao" key={u.id}>
                         <span className="n">Recusar e apagar o cadastro de <strong>{u.nome}</strong>?</span>
