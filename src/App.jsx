@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import {
   Camera, Trophy, Shield, LogOut, Lock, Phone, Mail, User as UserIcon,
   ArrowRight, AlertCircle, Check, X, Loader2, Calendar,
-  Trash2, ArrowLeft, ClipboardList, Hash, Users, Target, ChevronRight,
+  Trash2, ArrowLeft, ClipboardList, Hash, Users, Target, ChevronRight, ChevronLeft,
   Settings, ListChecks, Clock, Save, Crown, TrendingUp,
   Unlock, Database, MessageCircle, Copy, ExternalLink, Eye, EyeOff,
 } from "lucide-react";
@@ -90,17 +90,31 @@ export default function PalpitaoApp() {
   const jogosRef = useRef([]); // simula a tabela "jogos" (rodadas da Série B) no servidor
   const jogosFetchIdRef = useRef(0); // contador pra ignorar respostas de busca desatualizadas (evita race condition)
   const palpitesRef = useRef([]); // simula a tabela "palpites" no servidor
+  const clubesRef = useRef([]); // simula a tabela "clubes" (times cadastrados com escudo) no servidor
 
   const [screen, setScreen] = useState("splash");
   const [jogos, setJogos] = useState([]);
   const [rodadaForm, setRodadaForm] = useState("");
-  const [mandanteForm, setMandanteForm] = useState("");
-  const [visitanteForm, setVisitanteForm] = useState("");
+  const [mandanteClubeIdForm, setMandanteClubeIdForm] = useState("");
+  const [visitanteClubeIdForm, setVisitanteClubeIdForm] = useState("");
   const [dataForm, setDataForm] = useState("");
   const [horaForm, setHoraForm] = useState("");
   const [jogoErro, setJogoErro] = useState("");
   const [loadingJogo, setLoadingJogo] = useState(false);
   const [loadingJogosLista, setLoadingJogosLista] = useState(false);
+  const [indiceJogoCarrossel, setIndiceJogoCarrossel] = useState(0);
+  const [indicePalpiteCarrossel, setIndicePalpiteCarrossel] = useState(0);
+
+  // ---------------- Times (clubes com escudo, reutilizados nos jogos) ----------------
+  const [clubes, setClubes] = useState([]);
+  const [nomeClubeForm, setNomeClubeForm] = useState("");
+  const [escudoClubeForm, setEscudoClubeForm] = useState(null);
+  const [clubeErro, setClubeErro] = useState("");
+  const [loadingClube, setLoadingClube] = useState(false);
+  const [loadingClubesLista, setLoadingClubesLista] = useState(false);
+  const [confirmarExclusaoClubeId, setConfirmarExclusaoClubeId] = useState(null);
+  const [excluindoClubeId, setExcluindoClubeId] = useState(null);
+  const fileInputClubeRef = useRef(null);
 
   const [resultadosForm, setResultadosForm] = useState({}); // { [jogoId]: { mandante, visitante } }
   const [salvandoResultadoId, setSalvandoResultadoId] = useState(null);
@@ -144,6 +158,9 @@ export default function PalpitaoApp() {
   const [promovendoId, setPromovendoId] = useState(null);
   const [confirmarExclusaoId, setConfirmarExclusaoId] = useState(null);
   const [excluindoId, setExcluindoId] = useState(null);
+  const [aprovandoId, setAprovandoId] = useState(null);
+  const [confirmarRecusaId, setConfirmarRecusaId] = useState(null);
+  const [recusandoId, setRecusandoId] = useState(null);
   const [confirmarExclusaoJogoId, setConfirmarExclusaoJogoId] = useState(null);
   const [excluindoJogoId, setExcluindoJogoId] = useState(null);
   const [excluirErro, setExcluirErro] = useState("");
@@ -179,6 +196,7 @@ export default function PalpitaoApp() {
   const [loginSenha, setLoginSenha] = useState("");
   const [mostrarSenhaLogin, setMostrarSenhaLogin] = useState(false);
   const [loginMsg, setLoginMsg] = useState("");
+  const [loginSucessoMsg, setLoginSucessoMsg] = useState("");
   const [loadingLogin, setLoadingLogin] = useState(false);
 
   const [nome, setNome] = useState("");
@@ -210,6 +228,7 @@ export default function PalpitaoApp() {
   // shared=true: todo mundo que abrir este app vê o mesmo "banco de dados".
   const CHAVE_PARTICIPANTES = "palpitao_participantes";
   const CHAVE_JOGOS = "palpitao_jogos";
+  const CHAVE_CLUBES = "palpitao_clubes";
 
   async function carregarParticipantes() {
     try {
@@ -242,6 +261,21 @@ export default function PalpitaoApp() {
       await storageSet(CHAVE_JOGOS, JSON.stringify(lista));
     } catch (e) {
       console.error("Erro ao salvar jogos:", e);
+    }
+  }
+  async function carregarClubes() {
+    try {
+      const res = await storageGet(CHAVE_CLUBES);
+      return res && res.value ? JSON.parse(res.value) : [];
+    } catch {
+      return null;
+    }
+  }
+  async function salvarClubes(lista) {
+    try {
+      await storageSet(CHAVE_CLUBES, JSON.stringify(lista));
+    } catch (e) {
+      console.error("Erro ao salvar clubes:", e);
     }
   }
   const CHAVE_PALPITES = "palpitao_palpites";
@@ -290,12 +324,21 @@ export default function PalpitaoApp() {
       senha_hash: await hashSenha(senha),
       foto_url: foto || "",
       is_admin: isAdmin,
+      aprovado: isAdmin, // REGRA: o primeiro cadastro (Admin) já entra aprovado; os demais ficam pendentes até o Admin aprovar em "Aprovar Participantes"
       criado_em: new Date().toISOString(),
     };
     bancoRef.current = [...bancoRef.current, participante];
     await salvarParticipantes(bancoRef.current);
     setUsers([...bancoRef.current]);
     invalidarTelasDerivadas(); // participante novo: precisa aparecer em Pontuação, Classificação e Desempenho
+
+    if (!isAdmin) {
+      // Participante comum: cadastro fica pendente, sem token — só entra depois que o Admin aprovar
+      const { senha_hash, ...semSenha } = participante;
+      const body = { pendente: true, participante: semSenha };
+      registrarLog("POST", "/cadastro", 201, { pendente: true, participante: { ...semSenha, foto_url: "(base64 da foto)" } });
+      return { status: 201, body };
+    }
 
     const tok = gerarToken({ id: participante.id, isAdmin });
     const { senha_hash, ...semSenha } = participante;
@@ -319,6 +362,11 @@ export default function PalpitaoApp() {
       const body = { erro: "USUÁRIO/SENHA NÃO CONFERE" };
       registrarLog("POST", "/login", 401, body);
       return { status: 401, body };
+    }
+    if (!participante.aprovado) {
+      const body = { erro: "Seu cadastro ainda está aguardando aprovação do Administrador." };
+      registrarLog("POST", "/login", 403, body);
+      return { status: 403, body };
     }
     const tok = gerarToken({ id: participante.id, isAdmin: participante.is_admin });
     const { senha_hash, ...semSenha } = participante;
@@ -354,7 +402,7 @@ export default function PalpitaoApp() {
     setRodadaTodos([]);
   }
 
-  async function apiCadastrarJogo(tok, { rodada, mandante, visitante, data, hora }) {
+  async function apiCadastrarJogo(tok, { rodada, mandante, visitante, mandanteClubeId, visitanteClubeId, data, hora }) {
     await delay(450);
     const payload = lerToken(tok);
     if (!payload) {
@@ -383,6 +431,8 @@ export default function PalpitaoApp() {
       rodada: Number(rodada),
       mandante: mandante.trim(),
       visitante: visitante.trim(),
+      mandanteClubeId: mandanteClubeId || null, // referência ao time cadastrado em "Times", usada só pra buscar o escudo
+      visitanteClubeId: visitanteClubeId || null,
       data,
       hora,
       liberado: false, // REGRA: toda rodada nasce BLOQUEADA pra palpite — só abre quando o Admin libera na tela "Liberar Palpites"
@@ -485,6 +535,65 @@ export default function PalpitaoApp() {
     setJogos([...jogosRef.current].sort((a, b) => a.rodada - b.rodada));
     invalidarTelasDerivadas(); // jogo apagado: também precisa recalcular Pontuação, Classificação, Desempenho e Palpites de Todos
     registrarLog("DELETE", `/jogos/${id}`, 200, { ok: true });
+    return { status: 200, body: { ok: true } };
+  }
+
+  function ordenarClubes(lista) {
+    return [...lista].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }
+
+  async function apiCadastrarClube(tok, { nome, escudo_url }) {
+    await delay(350);
+    const payload = lerToken(tok);
+    if (!payload || !payload.isAdmin) {
+      const body = { erro: "Só o Administrador pode cadastrar times." };
+      registrarLog("POST", "/clubes", 403, body);
+      return { status: 403, body };
+    }
+    clubesRef.current = (await carregarClubes()) ?? clubesRef.current; // busca o estado mais atual salvo
+    if (!nome.trim()) {
+      const body = { erro: "Informe o nome do time." };
+      registrarLog("POST", "/clubes", 400, body);
+      return { status: 400, body };
+    }
+    const clube = {
+      id: crypto.randomUUID(),
+      nome: nome.trim(),
+      escudo_url: escudo_url || "",
+      criado_em: new Date().toISOString(),
+    };
+    clubesRef.current = [...clubesRef.current, clube];
+    await salvarClubes(clubesRef.current);
+    setClubes(ordenarClubes(clubesRef.current));
+    registrarLog("POST", "/clubes", 201, { clube: { ...clube, escudo_url: "(base64 do escudo)" } });
+    return { status: 201, body: { clube } };
+  }
+
+  async function apiListarClubes(tok) {
+    await delay(300);
+    if (!lerToken(tok)) {
+      const body = { erro: "Token inválido ou ausente." };
+      registrarLog("GET", "/clubes", 401, body);
+      return { status: 401, body };
+    }
+    clubesRef.current = (await carregarClubes()) ?? clubesRef.current; // busca o estado mais atual salvo
+    const lista = ordenarClubes(clubesRef.current);
+    registrarLog("GET", "/clubes", 200, { total: lista.length, clubes: lista.map((c) => ({ ...c, escudo_url: "(base64 do escudo)" })) });
+    return { status: 200, body: { clubes: lista } };
+  }
+
+  async function apiExcluirClube(tok, id) {
+    await delay(300);
+    const payload = lerToken(tok);
+    if (!payload || !payload.isAdmin) {
+      const body = { erro: "Só o Administrador pode remover times." };
+      registrarLog("DELETE", `/clubes/${id}`, 403, body);
+      return { status: 403, body };
+    }
+    clubesRef.current = ((await carregarClubes()) ?? clubesRef.current).filter((c) => c.id !== id);
+    await salvarClubes(clubesRef.current);
+    setClubes(ordenarClubes(clubesRef.current));
+    registrarLog("DELETE", `/clubes/${id}`, 200, { ok: true });
     return { status: 200, body: { ok: true } };
   }
 
@@ -827,6 +936,31 @@ export default function PalpitaoApp() {
     return { status: 200, body: { ok: true } };
   }
 
+  // REGRA: participante novo nasce com aprovado=false e não consegue entrar (login bloqueado)
+  // até o Admin autorizar aqui — evita gente estranha se cadastrando sem controle.
+  async function apiAprovarParticipante(tok, participanteId) {
+    await delay(400);
+    const payload = lerToken(tok);
+    if (!payload || !payload.isAdmin) {
+      const body = { erro: "Só o Administrador pode aprovar participantes." };
+      registrarLog("PUT", `/participantes/${participanteId}/aprovar`, 403, body);
+      return { status: 403, body };
+    }
+    bancoRef.current = (await carregarParticipantes()) ?? bancoRef.current;
+    const idx = bancoRef.current.findIndex((p) => p.id === participanteId);
+    if (idx === -1) {
+      const body = { erro: "Participante não encontrado." };
+      registrarLog("PUT", `/participantes/${participanteId}/aprovar`, 404, body);
+      return { status: 404, body };
+    }
+    bancoRef.current[idx] = { ...bancoRef.current[idx], aprovado: true };
+    await salvarParticipantes(bancoRef.current);
+    setUsers([...bancoRef.current]);
+    invalidarTelasDerivadas();
+    registrarLog("PUT", `/participantes/${participanteId}/aprovar`, 200, { participanteId });
+    return { status: 200, body: { ok: true } };
+  }
+
   async function apiAtualizarPerfil(tok, { celular, email, novaSenha, foto }) {
     await delay(450);
     const payload = lerToken(tok);
@@ -866,13 +1000,18 @@ export default function PalpitaoApp() {
   // ao abrir o app, carrega o que já está salvo (pros contadores aparecerem certos)
   useEffect(() => {
     (async () => {
-      const [participantesLidos, jogosLidos] = await Promise.all([carregarParticipantes(), carregarJogos()]);
+      const [participantesLidos, jogosLidos, clubesLidos] = await Promise.all([
+        carregarParticipantes(), carregarJogos(), carregarClubes(),
+      ]);
       const participantesSalvos = participantesLidos ?? [];
       const jogosSalvos = jogosLidos ?? [];
+      const clubesSalvos = clubesLidos ?? [];
       bancoRef.current = participantesSalvos;
       setUsers(participantesSalvos);
       jogosRef.current = jogosSalvos;
       setJogos(jogosSalvos);
+      clubesRef.current = clubesSalvos;
+      setClubes(ordenarClubes(clubesSalvos));
     })();
   }, []);
 
@@ -897,6 +1036,23 @@ export default function PalpitaoApp() {
         // evita que uma resposta atrasada "pise" num dado mais recente e faça os jogos sumirem da tela
         if (res.status === 200 && jogosFetchIdRef.current === idDestaBusca) setJogos(res.body.jogos);
         setLoadingJogosLista(false);
+      });
+    }
+  }, [screen, token]);
+
+  // sempre que entra nas telas de Jogos ou Meus Palpites, começa o carrossel do primeiro jogo
+  useEffect(() => {
+    if (screen === "jogos") setIndiceJogoCarrossel(0);
+    if (screen === "palpites") setIndicePalpiteCarrossel(0);
+  }, [screen]);
+
+  // sempre que entra na tela de Times ou de Jogos, busca a lista de clubes (nome + escudo) via "GET /clubes"
+  useEffect(() => {
+    if ((screen === "times" || screen === "jogos" || screen === "palpites") && token) {
+      setLoadingClubesLista(true);
+      apiListarClubes(token).then((res) => {
+        if (res.status === 200) setClubes(res.body.clubes);
+        setLoadingClubesLista(false);
       });
     }
   }, [screen, token]);
@@ -1006,9 +1162,55 @@ export default function PalpitaoApp() {
     reader.readAsDataURL(file);
   }
 
+  // Upload do escudo do time: redimensiona pra um ícone pequeno e mantém transparência (PNG),
+  // já que escudo de clube costuma vir com fundo transparente.
+  function handleEscudoClube(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const maxLado = 160;
+        const escala = Math.min(1, maxLado / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * escala);
+        canvas.height = Math.round(img.height * escala);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setEscudoClubeForm(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => setEscudoClubeForm(reader.result); // fallback: usa a original se algo falhar
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function getClubePorId(id) {
+    return clubes.find((c) => c.id === id) || null;
+  }
+
+  // Desenha o escudo do time (se cadastrado) ou um círculo com a inicial do nome, como alternativa visual.
+  function renderEscudo(clubeId, nomeFallback, size = 56) {
+    const clube = getClubePorId(clubeId);
+    if (clube && clube.escudo_url) {
+      return <img className="escudo-img" src={clube.escudo_url} alt={clube.nome} style={{ width: size, height: size }} />;
+    }
+    const inicial = (clube?.nome || nomeFallback || "?").trim().charAt(0).toUpperCase();
+    return <div className="escudo-vazio" style={{ width: size, height: size }}>{inicial}</div>;
+  }
+
+  // Gera uma cor diferente pra cada participante do gráfico de Desempenho — antes eram só 10 cores fixas
+  // num array, então com mais de 10 participantes as linhas começavam a repetir cor e pareciam estar "sumindo".
+  function corDesempenho(indice, total) {
+    const hue = Math.round((360 / Math.max(total, 1)) * indice) % 360;
+    return `hsl(${hue}, 68%, 60%)`;
+  }
+
   async function handleLogin(e) {
     e.preventDefault();
     setLoginMsg("");
+    setLoginSucessoMsg("");
     if (!loginContato.trim() || !loginSenha) {
       setLoginMsg("Informe seu nome e senha.");
       return;
@@ -1020,7 +1222,7 @@ export default function PalpitaoApp() {
         setCurrentUser(res.body.participante);
         setToken(res.body.token);
         setScreen("menu");
-      } else if (res.status === 401) {
+      } else if (res.status === 401 || res.status === 403) {
         setLoginMsg(res.body.erro);
       } else {
         // 404 -> usuário não encontrado: fica na tela de login mostrando o aviso,
@@ -1046,7 +1248,12 @@ export default function PalpitaoApp() {
     setLoadingCadastro(true);
     try {
       const res = await apiCadastro({ nome, celular, email, senha, foto });
-      if (res.status === 201) {
+      if (res.status === 201 && res.body.pendente) {
+        // Participante comum: não loga automaticamente — precisa esperar o Admin aprovar
+        limparCadastro();
+        setLoginSucessoMsg("Cadastro enviado! Assim que o Administrador aprovar, você já pode entrar por aqui.");
+        setScreen("login");
+      } else if (res.status === 201) {
         setCurrentUser(res.body.participante);
         setToken(res.body.token);
         limparCadastro();
@@ -1062,7 +1269,7 @@ export default function PalpitaoApp() {
   }
 
   function limparFormJogo() {
-    setRodadaForm(""); setMandanteForm(""); setVisitanteForm(""); setDataForm(""); setHoraForm(""); setJogoErro("");
+    setRodadaForm(""); setMandanteClubeIdForm(""); setVisitanteClubeIdForm(""); setDataForm(""); setHoraForm(""); setJogoErro("");
   }
 
   async function handleAdicionarJogo(e) {
@@ -1072,14 +1279,19 @@ export default function PalpitaoApp() {
       setJogoErro(`Informe a rodada (1 a ${MAX_JOGOS}).`);
       return;
     }
-    if (!mandanteForm.trim() || !visitanteForm.trim() || !dataForm || !horaForm) {
-      setJogoErro("Preencha mandante, visitante, data e hora do jogo.");
+    const clubeMandante = getClubePorId(mandanteClubeIdForm);
+    const clubeVisitante = getClubePorId(visitanteClubeIdForm);
+    if (!clubeMandante || !clubeVisitante || !dataForm || !horaForm) {
+      setJogoErro("Selecione o time mandante, o time visitante, a data e a hora do jogo.");
       return;
     }
     setLoadingJogo(true);
     try {
       const res = await apiCadastrarJogo(token, {
-        rodada: rodadaForm, mandante: mandanteForm, visitante: visitanteForm, data: dataForm, hora: horaForm,
+        rodada: rodadaForm,
+        mandante: clubeMandante.nome, visitante: clubeVisitante.nome,
+        mandanteClubeId: clubeMandante.id, visitanteClubeId: clubeVisitante.id,
+        data: dataForm, hora: horaForm,
       });
       if (res.status === 201) {
         limparFormJogo();
@@ -1090,6 +1302,43 @@ export default function PalpitaoApp() {
       setJogoErro("Erro inesperado ao cadastrar jogo: " + err.message);
     } finally {
       setLoadingJogo(false);
+    }
+  }
+
+  function limparFormClube() {
+    setNomeClubeForm(""); setEscudoClubeForm(null); setClubeErro("");
+    if (fileInputClubeRef.current) fileInputClubeRef.current.value = "";
+  }
+
+  async function handleAdicionarClube(e) {
+    e.preventDefault();
+    setClubeErro("");
+    if (!nomeClubeForm.trim()) {
+      setClubeErro("Informe o nome do time.");
+      return;
+    }
+    setLoadingClube(true);
+    try {
+      const res = await apiCadastrarClube(token, { nome: nomeClubeForm, escudo_url: escudoClubeForm });
+      if (res.status === 201) {
+        limparFormClube();
+      } else {
+        setClubeErro(res.body.erro);
+      }
+    } catch (err) {
+      setClubeErro("Erro inesperado ao cadastrar time: " + err.message);
+    } finally {
+      setLoadingClube(false);
+    }
+  }
+
+  async function handleExcluirClube(id) {
+    setExcluindoClubeId(id);
+    try {
+      await apiExcluirClube(token, id);
+      setConfirmarExclusaoClubeId(null);
+    } finally {
+      setExcluindoClubeId(null);
     }
   }
 
@@ -1275,6 +1524,31 @@ export default function PalpitaoApp() {
       setExcluirErro("Erro inesperado ao excluir: " + err.message);
     } finally {
       setExcluindoId(null);
+    }
+  }
+
+  async function handleAprovarParticipante(id) {
+    setExcluirErro("");
+    setAprovandoId(id);
+    try {
+      await apiAprovarParticipante(token, id);
+    } finally {
+      setAprovandoId(null);
+    }
+  }
+
+  async function handleRecusarParticipante(id) {
+    setExcluirErro("");
+    setRecusandoId(id);
+    try {
+      const res = await apiExcluirParticipante(token, id); // recusar = não vira participante, então só remove o cadastro pendente
+      if (res.status === 200) {
+        setConfirmarRecusaId(null);
+      } else {
+        setExcluirErro(res.body.erro);
+      }
+    } finally {
+      setRecusandoId(null);
     }
   }
 
@@ -1568,6 +1842,69 @@ export default function PalpitaoApp() {
         .jogo-card { background: rgba(247,245,239,0.04); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }
         .tag-encerrado { font-size: 11px; color: #FFB4AC; background: rgba(225,65,51,0.15); border: 1px solid rgba(225,65,51,0.35);
           border-radius: 6px; padding: 4px 8px; align-self: flex-start; }
+
+        /* ---------- Cartão de jogo (escudos + placar) com navegação por setas ---------- */
+        .jogo-carrossel { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 6px 0 4px; }
+        .carrossel-nav { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 380px; gap: 8px; }
+        .carrossel-seta { background: rgba(247,245,239,0.08); border: 1px solid var(--pitch-line); border-radius: 50%;
+          width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+          color: var(--chalk); cursor: pointer; }
+        .carrossel-seta:disabled { opacity: 0.3; cursor: default; }
+        .carrossel-rodada-pill { background: rgba(0,0,0,0.35); border: 1px solid var(--pitch-line); border-radius: 20px;
+          padding: 7px 18px; font-weight: 800; font-size: 13px; letter-spacing: 0.4px; color: var(--floodlight); white-space: nowrap; }
+        .cartao-jogo { width: 100%; max-width: 380px; background: linear-gradient(160deg, var(--pitch-dark), var(--pitch-mid));
+          border: 1px solid var(--pitch-line); border-radius: 18px; padding: 20px 16px; position: relative; }
+        .cartao-jogo-data { text-align: center; color: var(--muted); font-size: 12.5px; margin-bottom: 16px; letter-spacing: 0.3px; }
+        .cartao-jogo-confronto { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+        .cartao-time { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+        .cartao-time-nome { font-size: 12.5px; font-weight: 700; text-align: center; color: var(--chalk); line-height: 1.25; }
+        .escudo-img { border-radius: 8px; object-fit: contain; background: rgba(247,245,239,0.06); flex-shrink: 0; }
+        .escudo-vazio { border-radius: 8px; background: rgba(247,245,239,0.08); display: flex; align-items: center;
+          justify-content: center; font-weight: 800; color: var(--muted); flex-shrink: 0; font-size: 20px; }
+        .cartao-placar { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .cartao-placar-caixa { width: 50px; height: 50px; border-radius: 10px; background: #140505; border: 1px solid var(--pitch-line);
+          color: var(--floodlight); text-align: center; font-size: 20px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+        input.cartao-placar-caixa { -moz-appearance: textfield; }
+        input.cartao-placar-caixa::-webkit-outer-spin-button, input.cartao-placar-caixa::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input.cartao-placar-caixa:disabled { opacity: 0.55; }
+        input.cartao-placar-caixa:focus { outline: none; border-color: var(--floodlight); }
+        .cartao-placar-x { color: var(--muted); font-weight: 700; font-size: 13px; }
+        .cartao-status { display: block; text-align: center; margin-top: 16px; padding: 6px 12px; border-radius: 20px;
+          background: rgba(0,0,0,0.3); font-size: 11.5px; font-weight: 700; color: var(--chalk); }
+        .cartao-jogo-apagar { position: absolute; top: 14px; right: 14px; background: none; border: none; color: var(--muted); cursor: pointer; }
+        .cartao-jogo-apagar:hover { color: #FF8A7D; }
+        .carrossel-contador { color: var(--muted); font-size: 11.5px; }
+
+        .clube-item { display: flex; align-items: center; gap: 10px; background: rgba(247,245,239,0.04); border-radius: 10px; padding: 8px 10px; }
+        .clube-nome { flex: 1; color: var(--chalk); font-size: 14px; font-weight: 600; }
+        .escudo-preview-wrap { margin-top: 8px; }
+        .escudo-preview { width: 64px; height: 64px; object-fit: contain; border-radius: 8px; background: rgba(247,245,239,0.06); }
+        .dica-sem-clube { color: var(--muted); font-size: 11px; display: block; margin-top: 4px; }
+        .badge-pendente { background: #E14133; color: #fff; font-size: 11px; font-weight: 800; border-radius: 999px;
+          min-width: 20px; height: 20px; padding: 0 6px; display: flex; align-items: center; justify-content: center; margin-right: 4px; }
+        .tag-pendente-mini { font-size: 10px; font-weight: 700; color: #FFB4AC; background: rgba(225,65,51,0.15);
+          border: 1px solid rgba(225,65,51,0.35); border-radius: 6px; padding: 3px 7px; white-space: nowrap; }
+        .btn-liberar-mini { background: rgba(74,222,128,0.16); border: 1px solid rgba(74,222,128,0.45); color: #4ADE80;
+          border-radius: 7px; padding: 6px 10px; font-size: 11.5px; font-weight: 700; cursor: pointer; display: flex;
+          align-items: center; gap: 4px; flex-shrink: 0; }
+        .btn-liberar-mini:disabled { opacity: 0.6; cursor: default; }
+
+        .tela-cheia-modal-escuro { background: linear-gradient(160deg, var(--pitch-dark), var(--pitch-mid));
+          border: 1px solid var(--pitch-line); border-radius: 14px; width: 100%; max-width: 760px; max-height: 92vh;
+          display: flex; flex-direction: column; overflow: hidden; }
+        .tela-cheia-topo-escuro { display: flex; align-items: center; justify-content: space-between;
+          background: rgba(0,0,0,0.28); padding: 14px 18px; flex-shrink: 0; }
+        .tela-cheia-topo-escuro strong { color: var(--chalk); font-size: 14px; }
+        .tela-cheia-fechar-escuro { background: rgba(247,245,239,0.1); border: none; color: var(--chalk);
+          border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+        .tela-cheia-fechar-escuro:hover { background: rgba(247,245,239,0.18); }
+        .grafico-wrap-cheio { padding: 16px 8px 6px; }
+        .legenda-grafico-cheia { padding: 4px 16px 18px; max-height: none; }
+        .btn-secundario { display: inline-flex; align-items: center; gap: 6px; background: rgba(247,245,239,0.06);
+          border: 1px solid var(--pitch-line); color: var(--chalk); border-radius: 8px; padding: 9px 14px;
+          font-size: 12.5px; font-weight: 700; cursor: pointer; }
+        .btn-secundario:hover { background: rgba(247,245,239,0.1); }
+
         .tag-resultado { font-size: 11px; color: var(--floodlight-soft); background: rgba(242,194,48,0.12); border: 1px solid rgba(242,194,48,0.35);
           border-radius: 6px; padding: 4px 8px; align-self: flex-start; font-weight: 700; }
         .resultado-row { display: flex; align-items: center; gap: 8px; padding-top: 4px; border-top: 1px dashed rgba(247,245,239,0.12); }
@@ -1659,8 +1996,8 @@ export default function PalpitaoApp() {
         .clx-cabecalho-topo { text-align: center; margin-bottom: 6px; }
         .clx-titulo-principal { display: block; color: #1a1a1a; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; }
         .clx-titulo-sub { display: block; color: #444; font-weight: 700; font-size: 11px; margin-top: 2px; }
-        .clx-colunas-header { display: flex; align-items: center; gap: 4px; padding: 4px 2px 0; font-size: 9px; font-weight: 800;
-          color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.3px; }
+        .clx-colunas-header { display: flex; align-items: center; gap: 4px; padding: 6px 8px 4px; font-size: 12px; font-weight: 800;
+          color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.4px; }
         .clx-h-num { width: 22px; flex-shrink: 0; }
         .clx-h-nome { width: 120px; flex-shrink: 0; }
         .clx-h-pontos { width: 34px; flex-shrink: 0; text-align: center; }
@@ -1824,6 +2161,7 @@ export default function PalpitaoApp() {
         {screen === "login" && (
           <div className="screen">
             <h2 className="title">Entrar em campo</h2>
+            {loginSucessoMsg && <div className="msg-sucesso"><Check size={15} />{loginSucessoMsg}</div>}
             {loginMsg && <div className="msg-error"><AlertCircle size={15} />{loginMsg}</div>}
             <div>
               <div className="field">
@@ -1941,6 +2279,31 @@ export default function PalpitaoApp() {
                 </span>
                 <ChevronRight size={16} />
               </button>
+              {currentUser.is_admin && (
+                <button className="menu-item" onClick={() => setScreen("aprovarParticipantes")}>
+                  <span className="menu-item-icon"><UserIcon size={18} /></span>
+                  <span className="menu-item-text">
+                    <strong>Aprovar Participantes</strong>
+                    <small>
+                      {users.filter((u) => !u.aprovado).length > 0
+                        ? `${users.filter((u) => !u.aprovado).length} aguardando aprovação`
+                        : "Nenhum pedido pendente"}
+                    </small>
+                  </span>
+                  {users.filter((u) => !u.aprovado).length > 0 && (
+                    <span className="badge-pendente">{users.filter((u) => !u.aprovado).length}</span>
+                  )}
+                  <ChevronRight size={16} />
+                </button>
+              )}
+              <button className="menu-item" onClick={() => setScreen("times")}>
+                <span className="menu-item-icon"><Shield size={18} /></span>
+                <span className="menu-item-text">
+                  <strong>Times</strong>
+                  <small>{currentUser.is_admin ? "Cadastre os escudos dos clubes" : "Veja os times cadastrados"}</small>
+                </span>
+                <ChevronRight size={16} />
+              </button>
               <button className="menu-item" onClick={() => setScreen("jogos")}>
                 <span className="menu-item-icon"><Calendar size={18} /></span>
                 <span className="menu-item-text">
@@ -1954,14 +2317,6 @@ export default function PalpitaoApp() {
                 <span className="menu-item-text">
                   <strong>Palpites</strong>
                   <small>Aposte no placar e veja os palpites de todos</small>
-                </span>
-                <ChevronRight size={16} />
-              </button>
-              <button className="menu-item" onClick={() => { setRodadaSelecionadaId(""); setScreen("rodada"); }}>
-                <span className="menu-item-icon"><ListChecks size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Palpites da Rodada</strong>
-                  <small>Veja quem já apostou em cada jogo</small>
                 </span>
                 <ChevronRight size={16} />
               </button>
@@ -2118,6 +2473,7 @@ export default function PalpitaoApp() {
                     {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
                     <span className="n">{u.nome}</span>
                     {u.is_admin && <Shield size={13} color="#F2C230" />}
+                    {!u.aprovado && <span className="tag-pendente-mini">Aguardando aprovação</span>}
                     {currentUser.is_admin && !u.is_admin && (
                       <button className="btn-promover" onClick={() => handlePromoverAdmin(u.id, u.nome)} disabled={promovendoId === u.id}>
                         {promovendoId === u.id ? <Loader2 size={12} className="spin" /> : <><Shield size={11} /> Promover</>}
@@ -2135,13 +2491,124 @@ export default function PalpitaoApp() {
           </div>
         )}
 
+        {screen === "aprovarParticipantes" && currentUser && (
+          <div className="screen">
+            <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
+            <h2 className="title">Aprovar Participantes</h2>
+            <p className="pontuacao-legenda">
+              Toda pessoa que se cadastra fica <strong>aguardando aprovação</strong> até você autorizar aqui — assim ninguém
+              entra no bolão sem seu conhecimento.
+            </p>
+
+            {!currentUser.is_admin ? (
+              <div className="msg-error"><AlertCircle size={15} />Só o Administrador acessa essa tela.</div>
+            ) : (
+              <>
+                {excluirErro && <div className="msg-error"><AlertCircle size={15} />{excluirErro}</div>}
+                <div className="list">
+                  {users.filter((u) => !u.aprovado).length === 0 && (
+                    <div className="log-empty">Nenhum cadastro aguardando aprovação no momento.</div>
+                  )}
+                  {users.filter((u) => !u.aprovado).map((u) =>
+                    confirmarRecusaId === u.id ? (
+                      <div className="list-item confirmar-exclusao" key={u.id}>
+                        <span className="n">Recusar e apagar o cadastro de <strong>{u.nome}</strong>?</span>
+                        <button className="btn-confirmar-sim" onClick={() => handleRecusarParticipante(u.id)} disabled={recusandoId === u.id}>
+                          {recusandoId === u.id ? <Loader2 size={12} className="spin" /> : "Sim"}
+                        </button>
+                        <button className="btn-confirmar-nao" onClick={() => setConfirmarRecusaId(null)}>Não</button>
+                      </div>
+                    ) : (
+                      <div className="list-item" key={u.id}>
+                        {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
+                        <span className="n">{u.nome}</span>
+                        <button className="btn-liberar-mini" onClick={() => handleAprovarParticipante(u.id)} disabled={aprovandoId === u.id}>
+                          {aprovandoId === u.id ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Aprovar</>}
+                        </button>
+                        <button className="jogo-del" title="Recusar cadastro" onClick={() => setConfirmarRecusaId(u.id)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {screen === "times" && currentUser && (
+          <div className="screen">
+            <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
+            <h2 className="title">Times — Série B 2026</h2>
+
+            {!currentUser.is_admin ? (
+              <div className="msg-error"><AlertCircle size={15} />Só o Administrador pode cadastrar times. Você pode ver a lista abaixo.</div>
+            ) : (
+              <>
+                {clubeErro && <div className="msg-error"><AlertCircle size={15} />{clubeErro}</div>}
+                <div className="field">
+                  <label><Shield size={12} /> Nome do time</label>
+                  <div className="input-wrap">
+                    <input value={nomeClubeForm} onChange={(e) => setNomeClubeForm(e.target.value)} placeholder="Ex: Atlético-GO" />
+                  </div>
+                </div>
+                <div className="field">
+                  <label><Camera size={12} /> Escudo do time</label>
+                  <input ref={fileInputClubeRef} type="file" accept="image/*" onChange={handleEscudoClube} style={{ display: "none" }} />
+                  <button type="button" className="btn-secundario" onClick={() => fileInputClubeRef.current?.click()}>
+                    <Camera size={14} /> {escudoClubeForm ? "Trocar imagem" : "Escolher imagem"}
+                  </button>
+                  {escudoClubeForm && (
+                    <div className="escudo-preview-wrap">
+                      <img className="escudo-preview" src={escudoClubeForm} alt="Prévia do escudo" />
+                    </div>
+                  )}
+                </div>
+                <button className="btn-primary" type="button" onClick={handleAdicionarClube} disabled={loadingClube}>
+                  {loadingClube ? <><Loader2 size={16} className="spin" /> SALVANDO…</> : <><Check size={16} /> ADICIONAR TIME</>}
+                </button>
+              </>
+            )}
+
+            <div className="section-label" style={{ marginTop: 18 }}>
+              <Shield size={13} /> Times cadastrados {loadingClubesLista && <Loader2 size={12} className="spin" />}
+            </div>
+            <div className="list">
+              {clubes.length === 0 && <div className="log-empty">Nenhum time cadastrado ainda.</div>}
+              {clubes.map((c) => {
+                if (confirmarExclusaoClubeId === c.id) {
+                  return (
+                    <div className="list-item confirmar-exclusao" key={c.id}>
+                      <span className="n">Apagar <strong>{c.nome}</strong>?</span>
+                      <button className="btn-confirmar-sim" onClick={() => handleExcluirClube(c.id)} disabled={excluindoClubeId === c.id}>
+                        {excluindoClubeId === c.id ? <Loader2 size={12} className="spin" /> : "Sim"}
+                      </button>
+                      <button className="btn-confirmar-nao" onClick={() => setConfirmarExclusaoClubeId(null)}>Não</button>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={c.id} className="clube-item">
+                    {renderEscudo(c.id, c.nome, 40)}
+                    <span className="clube-nome">{c.nome}</span>
+                    {currentUser.is_admin && (
+                      <button className="jogo-del" title="Apagar time" onClick={() => setConfirmarExclusaoClubeId(c.id)}><Trash2 size={15} /></button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {screen === "jogos" && currentUser && (
           <div className="screen">
             <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
             <h2 className="title">Jogos — Série B 2026</h2>
 
             {!currentUser.is_admin ? (
-              <div className="msg-error"><AlertCircle size={15} />Só o Administrador pode cadastrar jogos. Você pode ver a tabela abaixo.</div>
+              <div className="msg-error"><AlertCircle size={15} />Só o Administrador pode cadastrar jogos. Você pode ver os jogos abaixo.</div>
             ) : (
               <>
                 {jogoErro && <div className="msg-error"><AlertCircle size={15} />{jogoErro}</div>}
@@ -2169,11 +2636,24 @@ export default function PalpitaoApp() {
                   </div>
                   <div className="field">
                     <label><Shield size={12} /> Time mandante</label>
-                    <div className="input-wrap"><input value={mandanteForm} onChange={(e) => setMandanteForm(e.target.value)} placeholder="Ex: Goiás" /></div>
+                    <div className="input-wrap select-wrap">
+                      <select value={mandanteClubeIdForm} onChange={(e) => setMandanteClubeIdForm(e.target.value)}>
+                        <option value="">Selecione o time…</option>
+                        {clubes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </select>
+                    </div>
                   </div>
                   <div className="field">
                     <label><Shield size={12} /> Time visitante</label>
-                    <div className="input-wrap"><input value={visitanteForm} onChange={(e) => setVisitanteForm(e.target.value)} placeholder="Ex: Vila Nova" /></div>
+                    <div className="input-wrap select-wrap">
+                      <select value={visitanteClubeIdForm} onChange={(e) => setVisitanteClubeIdForm(e.target.value)}>
+                        <option value="">Selecione o time…</option>
+                        {clubes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                      </select>
+                    </div>
+                    {clubes.length === 0 && (
+                      <small className="dica-sem-clube">Nenhum time cadastrado ainda — cadastre primeiro na tela "Times".</small>
+                    )}
                   </div>
                   <button className="btn-primary" type="button" onClick={handleAdicionarJogo} disabled={loadingJogo}>
                     {loadingJogo ? <><Loader2 size={16} className="spin" /> SALVANDO…</> : <><Check size={16} /> ADICIONAR JOGO</>}
@@ -2185,41 +2665,76 @@ export default function PalpitaoApp() {
             <div className="section-label" style={{ marginTop: 18 }}>
               <ClipboardList size={13} /> Jogos cadastrados {loadingJogosLista && <Loader2 size={12} className="spin" />}
             </div>
-            <div className="list">
-              {jogos.length === 0 && <div className="log-empty">Nenhum jogo cadastrado ainda.</div>}
-              {jogos.map((j) => {
-                const temResultado = j.resultadoMandante !== null && j.resultadoMandante !== undefined;
-                if (confirmarExclusaoJogoId === j.id) {
-                  return (
-                    <div className="list-item confirmar-exclusao" key={j.id}>
-                      <span className="n">Apagar <strong>R{String(j.rodada).padStart(2, "0")} — {j.mandante} x {j.visitante}</strong>?</span>
-                      <button className="btn-confirmar-sim" onClick={() => handleExcluirJogo(j.id)} disabled={excluindoJogoId === j.id}>
-                        {excluindoJogoId === j.id ? <Loader2 size={12} className="spin" /> : "Sim"}
-                      </button>
-                      <button className="btn-confirmar-nao" onClick={() => setConfirmarExclusaoJogoId(null)}>Não</button>
-                    </div>
-                  );
-                }
-                return (
-                  <div key={j.id} className="jogo-card">
-                    <div className="jogo-item" style={{ background: "transparent", padding: 0 }}>
-                      <span className="jogo-rodada">R{String(j.rodada).padStart(2, "0")}</span>
-                      <span className="jogo-data">{j.data?.split("-").reverse().join("/")} {j.hora}</span>
-                      {currentUser.is_admin && (
-                        <button className="jogo-del" title="Apagar jogo" onClick={() => setConfirmarExclusaoJogoId(j.id)}><Trash2 size={15} /></button>
-                      )}
-                    </div>
-                    {jogoJaComecou(j) && (
-                      <span className="tag-encerrado">Jogo já começou — palpites encerrados</span>
-                    )}
-                    <span className="jogo-confronto">{j.mandante} x {j.visitante}</span>
-                    {temResultado && (
-                      <span className="tag-resultado">Resultado final: {j.resultadoMandante} x {j.resultadoVisitante}</span>
-                    )}
+
+            {jogos.length === 0 ? (
+              <div className="log-empty">Nenhum jogo cadastrado ainda.</div>
+            ) : (() => {
+              const idx = Math.min(indiceJogoCarrossel, jogos.length - 1);
+              const j = jogos[idx];
+              const temResultado = j.resultadoMandante !== null && j.resultadoMandante !== undefined;
+              const jaComecou = jogoJaComecou(j);
+              return (
+                <div className="jogo-carrossel">
+                  <div className="carrossel-nav">
+                    <button className="carrossel-seta" onClick={() => setIndiceJogoCarrossel((i) => Math.max(0, i - 1))} disabled={idx === 0}>
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span className="carrossel-rodada-pill">Rodada {String(j.rodada).padStart(2, "0")}</span>
+                    <button className="carrossel-seta" onClick={() => setIndiceJogoCarrossel((i) => Math.min(jogos.length - 1, i + 1))} disabled={idx === jogos.length - 1}>
+                      <ChevronRight size={18} />
+                    </button>
                   </div>
-                );
-              })}
-            </div>
+
+                  {confirmarExclusaoJogoId === j.id ? (
+                    <div className="cartao-jogo">
+                      <p style={{ textAlign: "center", marginBottom: 12, color: "var(--chalk)" }}>
+                        Apagar <strong>R{String(j.rodada).padStart(2, "0")} — {j.mandante} x {j.visitante}</strong>?
+                      </p>
+                      <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                        <button className="btn-confirmar-sim" onClick={() => handleExcluirJogo(j.id)} disabled={excluindoJogoId === j.id}>
+                          {excluindoJogoId === j.id ? <Loader2 size={12} className="spin" /> : "Sim"}
+                        </button>
+                        <button className="btn-confirmar-nao" onClick={() => setConfirmarExclusaoJogoId(null)}>Não</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="cartao-jogo">
+                      {currentUser.is_admin && (
+                        <button className="cartao-jogo-apagar" title="Apagar jogo" onClick={() => setConfirmarExclusaoJogoId(j.id)}>
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                      <div className="cartao-jogo-data">{j.data?.split("-").reverse().join("/")} · {j.hora}</div>
+                      <div className="cartao-jogo-confronto">
+                        <div className="cartao-time">
+                          {renderEscudo(j.mandanteClubeId, j.mandante, 56)}
+                          <span className="cartao-time-nome">{j.mandante}</span>
+                        </div>
+                        <div className="cartao-placar">
+                          <span className="cartao-placar-caixa">{temResultado ? j.resultadoMandante : "–"}</span>
+                          <span className="cartao-placar-x">x</span>
+                          <span className="cartao-placar-caixa">{temResultado ? j.resultadoVisitante : "–"}</span>
+                        </div>
+                        <div className="cartao-time">
+                          {renderEscudo(j.visitanteClubeId, j.visitante, 56)}
+                          <span className="cartao-time-nome">{j.visitante}</span>
+                        </div>
+                      </div>
+                      <span className="cartao-status">
+                        {temResultado
+                          ? `Resultado final: ${j.resultadoMandante} x ${j.resultadoVisitante}`
+                          : jaComecou
+                          ? "Encerrado — aguardando resultado"
+                          : j.liberado
+                          ? "🟢 Palpites liberados"
+                          : "🔒 Palpites fechados"}
+                      </span>
+                    </div>
+                  )}
+                  <span className="carrossel-contador">{idx + 1} de {jogos.length}</span>
+                </div>
+              );
+            })()}
 
             <div className="scoreboard">
               <span className="scoreboard-label">Jogos cadastrados</span>
@@ -2237,7 +2752,7 @@ export default function PalpitaoApp() {
             <button className="menu-item" onClick={() => { setParticipanteAlvoId(""); setScreen("palpites"); }}>
               <span className="menu-item-icon"><Target size={18} /></span>
               <span className="menu-item-text">
-                <strong>Meus Palpites</strong>
+                <strong>Postar Palpites</strong>
                 <small>Aposte no placar de cada jogo</small>
               </span>
               <ChevronRight size={16} />
@@ -2250,13 +2765,21 @@ export default function PalpitaoApp() {
               </span>
               <ChevronRight size={16} />
             </button>
+            <button className="menu-item" onClick={() => { setRodadaSelecionadaId(""); setScreen("rodada"); }}>
+              <span className="menu-item-icon"><Hash size={18} /></span>
+              <span className="menu-item-text">
+                <strong>Palpites da Rodada</strong>
+                <small>Veja quem já apostou em cada jogo</small>
+              </span>
+              <ChevronRight size={16} />
+            </button>
           </div>
         )}
 
         {screen === "palpites" && currentUser && (
           <div className="screen">
             <button className="btn-voltar" onClick={() => setScreen("palpitesHub")}><ArrowLeft size={16} /> VOLTAR</button>
-            <h2 className="title">{participanteAlvoId ? "Palpites do participante" : "Meus Palpites"}</h2>
+            <h2 className="title">{participanteAlvoId ? "Palpites do participante" : "Postar Palpites"}</h2>
 
             {currentUser.is_admin && (
               <div className="field">
@@ -2278,49 +2801,66 @@ export default function PalpitaoApp() {
               <Target size={13} /> Aposte no placar {(loadingJogosLista || loadingPalpites) && <Loader2 size={12} className="spin" />}
             </div>
 
-            {jogos.length === 0 && !loadingJogosLista && (
+            {jogos.length === 0 && !loadingJogosLista ? (
               <div className="log-empty">Nenhum jogo cadastrado ainda. Peça pro Administrador cadastrar os jogos.</div>
-            )}
+            ) : jogos.length > 0 && (() => {
+              const idx = Math.min(indicePalpiteCarrossel, jogos.length - 1);
+              const j = jogos[idx];
+              const par = placaresForm[j.id] || { mandante: "", visitante: "" };
+              const salvo = jogosSalvos[j.id];
+              const jaComecou = jogoJaComecou(j);
+              const naoLiberado = !j.liberado;
+              const encerrado = (jaComecou || naoLiberado) && !currentUser.is_admin;
+              return (
+                <div className="jogo-carrossel">
+                  <div className="carrossel-nav">
+                    <button className="carrossel-seta" onClick={() => setIndicePalpiteCarrossel((i) => Math.max(0, i - 1))} disabled={idx === 0}>
+                      <ChevronLeft size={18} />
+                    </button>
+                    <span className="carrossel-rodada-pill">Rodada {String(j.rodada).padStart(2, "0")}</span>
+                    <button className="carrossel-seta" onClick={() => setIndicePalpiteCarrossel((i) => Math.min(jogos.length - 1, i + 1))} disabled={idx === jogos.length - 1}>
+                      <ChevronRight size={18} />
+                    </button>
+                  </div>
 
-            <div className="list">
-              {jogos.map((j) => {
-                const par = placaresForm[j.id] || { mandante: "", visitante: "" };
-                const salvo = jogosSalvos[j.id];
-                const jaComecou = jogoJaComecou(j);
-                const naoLiberado = !j.liberado;
-                const encerrado = (jaComecou || naoLiberado) && !currentUser.is_admin;
-                return (
-                  <div className="palpite-item" key={j.id}>
-                    <div className="palpite-topo">
-                      <span className="jogo-rodada">R{String(j.rodada).padStart(2, "0")}</span>
-                      <span className="jogo-data">{j.data?.split("-").reverse().join("/")} {j.hora}</span>
+                  <div className="cartao-jogo">
+                    <div className="cartao-jogo-data">{j.data?.split("-").reverse().join("/")} · {j.hora}</div>
+                    <div className="cartao-jogo-confronto">
+                      <div className="cartao-time">
+                        {renderEscudo(j.mandanteClubeId, j.mandante, 56)}
+                        <span className="cartao-time-nome">{j.mandante}</span>
+                      </div>
+                      <div className="cartao-placar">
+                        <input
+                          className="cartao-placar-caixa"
+                          type="number" min="0" inputMode="numeric"
+                          value={par.mandante}
+                          onChange={(e) => atualizarPlacarForm(j.id, "mandante", e.target.value)}
+                          placeholder="0" disabled={encerrado}
+                        />
+                        <span className="cartao-placar-x">x</span>
+                        <input
+                          className="cartao-placar-caixa"
+                          type="number" min="0" inputMode="numeric"
+                          value={par.visitante}
+                          onChange={(e) => atualizarPlacarForm(j.id, "visitante", e.target.value)}
+                          placeholder="0" disabled={encerrado}
+                        />
+                      </div>
+                      <div className="cartao-time">
+                        {renderEscudo(j.visitanteClubeId, j.visitante, 56)}
+                        <span className="cartao-time-nome">{j.visitante}</span>
+                      </div>
                     </div>
-                    <div className="palpite-confronto">
-                      <span className="palpite-time">{j.mandante}</span>
-                      <input
-                        className="placar-input"
-                        type="number" min="0" inputMode="numeric"
-                        value={par.mandante}
-                        onChange={(e) => atualizarPlacarForm(j.id, "mandante", e.target.value)}
-                        placeholder="0" disabled={encerrado}
-                      />
-                      <span className="palpite-x">x</span>
-                      <input
-                        className="placar-input"
-                        type="number" min="0" inputMode="numeric"
-                        value={par.visitante}
-                        onChange={(e) => atualizarPlacarForm(j.id, "visitante", e.target.value)}
-                        placeholder="0" disabled={encerrado}
-                      />
-                      <span className="palpite-time palpite-time-dir">{j.visitante}</span>
-                    </div>
+
                     {encerrado ? (
-                      <span className="tag-encerrado">
+                      <span className="cartao-status">
                         {jaComecou ? "Jogo já começou — palpites encerrados" : "Aguardando o Administrador liberar essa rodada"}
                       </span>
                     ) : (
                       <button
                         className={`btn-palpite ${salvo ? "salvo" : ""}`}
+                        style={{ marginTop: 16 }}
                         onClick={() => handleSalvarPalpite(j.id)}
                         disabled={salvandoJogoId === j.id}
                       >
@@ -2334,11 +2874,13 @@ export default function PalpitaoApp() {
                       </button>
                     )}
                   </div>
-                );
-              })}
-            </div>
+                  <span className="carrossel-contador">{idx + 1} de {jogos.length}</span>
+                </div>
+              );
+            })()}
           </div>
         )}
+
 
         {screen === "palpitesVisualizar" && currentUser && (() => {
           const jogoAtual = rodadasVisualizacao.find((r) => r.id === rodadaVisualizarId)
@@ -2427,7 +2969,7 @@ export default function PalpitaoApp() {
           const jogoAtual = jogos.find((j) => j.id === rodadaSelecionadaId);
           return (
             <div className="screen">
-              <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
+              <button className="btn-voltar" onClick={() => setScreen("palpitesHub")}><ArrowLeft size={16} /> VOLTAR</button>
               <h2 className="title">Palpites da Rodada</h2>
 
               <div className="field">
@@ -2517,7 +3059,7 @@ export default function PalpitaoApp() {
                       <span className="clx-h-tipo">X 4</span>
                       <span className="clx-h-tipo">X 3</span>
                       <span className="clx-h-tipo">X 1</span>
-                      <span className="clx-h-tipo">0</span>
+                      <span className="clx-h-tipo">X 0</span>
                       <span className="clx-h-tipo">WO</span>
                     </div>
                   </div>
@@ -2609,7 +3151,6 @@ export default function PalpitaoApp() {
         )}
 
         {screen === "desempenho" && currentUser && (() => {
-          const cores = ["#F2C230", "#FF6B6B", "#4ADE80", "#60A5FA", "#C084FC", "#FB923C", "#F472B6", "#2DD4BF", "#A3E635", "#FDBA74"];
           // reforça aqui, na exibição, a ordem por pontuação (maior pra menor) — não depende só do
           // que a API já manda ordenado, garantindo que gráfico, legenda e tooltip nunca fiquem alfabéticos
           const totalFinal = (s) => (s.valores.length ? s.valores[s.valores.length - 1] : 0);
@@ -2641,7 +3182,7 @@ export default function PalpitaoApp() {
                       <YAxis tick={{ fill: "#C99C9C", fontSize: 10 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
                       <Tooltip contentStyle={{ background: "#1a0808", border: "1px solid rgba(242,194,48,0.3)", fontSize: 12 }} />
                       {seriesOrdenada.map((s, i) => (
-                        <Line key={s.participanteId} type="monotone" dataKey={s.nome} stroke={cores[i % cores.length]}
+                        <Line key={s.participanteId} type="monotone" dataKey={s.nome} stroke={corDesempenho(i, seriesOrdenada.length)}
                           strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} />
                       ))}
                     </LineChart>
@@ -2653,11 +3194,17 @@ export default function PalpitaoApp() {
                 <div className="legenda-grafico">
                   {seriesOrdenada.map((s, i) => (
                     <div className="legenda-item" key={s.participanteId}>
-                      <span className="legenda-dot" style={{ background: cores[i % cores.length] }} />
+                      <span className="legenda-dot" style={{ background: corDesempenho(i, seriesOrdenada.length) }} />
                       <span>{s.nome}</span>
                     </div>
                   ))}
                 </div>
+              )}
+
+              {evolucaoRodadas.length > 0 && (
+                <button className="btn-tela-cheia" type="button" onClick={() => abrirTelaCheia("desempenho")}>
+                  <ExternalLink size={14} /> Ver em tela cheia
+                </button>
               )}
             </div>
           );
@@ -3053,7 +3600,7 @@ export default function PalpitaoApp() {
                       <span className="clx-h-tipo">X 4</span>
                       <span className="clx-h-tipo">X 3</span>
                       <span className="clx-h-tipo">X 1</span>
-                      <span className="clx-h-tipo">0</span>
+                      <span className="clx-h-tipo">X 0</span>
                       <span className="clx-h-tipo">WO</span>
                     </div>
                   </div>
@@ -3077,6 +3624,54 @@ export default function PalpitaoApp() {
           </div>
         </div>
       )}
+
+      {telaCheiaTipo === "desempenho" && (() => {
+        const totalFinal = (s) => (s.valores.length ? s.valores[s.valores.length - 1] : 0);
+        const seriesOrdenada = [...evolucaoSeries].sort(
+          (a, b) => totalFinal(b) - totalFinal(a) || a.nome.localeCompare(b.nome, "pt-BR")
+        );
+        const dadosGrafico = evolucaoRodadas.map((r, idx) => {
+          const ponto = { rodada: `R${r}` };
+          seriesOrdenada.forEach((s) => { ponto[s.nome] = s.valores[idx]; });
+          return ponto;
+        });
+        return (
+          <div className="tela-cheia-overlay" onClick={fecharTelaCheia}>
+            <div className="tela-cheia-modal-escuro" onClick={(e) => e.stopPropagation()}>
+              <div className="tela-cheia-topo-escuro">
+                <strong>Desempenho — evolução da pontuação</strong>
+                <button className="tela-cheia-fechar-escuro" onClick={fecharTelaCheia}><X size={17} /></button>
+              </div>
+              <div className="tela-cheia-scroll">
+                <div className="grafico-wrap-cheio">
+                  <ResponsiveContainer width="100%" height={420}>
+                    <LineChart data={dadosGrafico} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(247,245,239,0.12)" />
+                      <XAxis dataKey="rodada" tick={{ fill: "#C99C9C", fontSize: 11 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
+                      <YAxis tick={{ fill: "#C99C9C", fontSize: 11 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
+                      <Tooltip contentStyle={{ background: "#1a0808", border: "1px solid rgba(242,194,48,0.3)", fontSize: 12 }} />
+                      {seriesOrdenada.map((s, i) => (
+                        <Line key={s.participanteId} type="monotone" dataKey={s.nome} stroke={corDesempenho(i, seriesOrdenada.length)}
+                          strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 5 }} />
+                      ))}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                {seriesOrdenada.length > 0 && (
+                  <div className="legenda-grafico legenda-grafico-cheia">
+                    {seriesOrdenada.map((s, i) => (
+                      <div className="legenda-item" key={s.participanteId}>
+                        <span className="legenda-dot" style={{ background: corDesempenho(i, seriesOrdenada.length) }} />
+                        <span>{s.nome}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
