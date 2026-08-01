@@ -1932,24 +1932,6 @@ export default function PalpitaoApp() {
 
             <div className="section-label">Menu principal</div>
 
-            {currentUser.is_admin && (
-              <div className="aviso-armazenamento">
-                <AlertCircle size={16} />
-                <div>
-                  <strong>Antes de pedir uma correção ou atualização pro Claude</strong>
-                  <p>
-                    O armazenamento só funciona no link <strong>publicado</strong> — durante testes no preview do
-                    chat, nada é salvo de verdade. E editar o código pode gerar uma versão nova, com os dados
-                    zerados. Pra não perder nada, <strong>exporte os dados agora</strong> e importe de novo depois
-                    que a correção for publicada.
-                  </p>
-                  <button className="btn-aviso-exportar" onClick={() => setScreen("backup")}>
-                    <Database size={13} /> Ir pra Exportar / Importar
-                  </button>
-                </div>
-              </div>
-            )}
-
             <div className="menu-list">
               <button className="menu-item" onClick={() => setScreen("perfil")}>
                 <span className="menu-item-icon"><Users size={18} /></span>
@@ -2071,6 +2053,24 @@ export default function PalpitaoApp() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {currentUser.is_admin && (
+              <div className="aviso-armazenamento">
+                <AlertCircle size={16} />
+                <div>
+                  <strong>Antes de pedir uma correção ou atualização pro Claude</strong>
+                  <p>
+                    O armazenamento só funciona no link <strong>publicado</strong> — durante testes no preview do
+                    chat, nada é salvo de verdade. E editar o código pode gerar uma versão nova, com os dados
+                    zerados. Pra não perder nada, <strong>exporte os dados agora</strong> e importe de novo depois
+                    que a correção for publicada.
+                  </p>
+                  <button className="btn-aviso-exportar" onClick={() => setScreen("backup")}>
+                    <Database size={13} /> Ir pra Exportar / Importar
+                  </button>
+                </div>
               </div>
             )}
           </div>
