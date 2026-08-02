@@ -2030,7 +2030,7 @@ export default function PalpitaoApp() {
         .clx-scroll-outer { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border-radius: 10px;
           border: 1px solid rgba(247,245,239,0.14); margin-top: 6px; }
         .clx-tabela-wrap { display: flex; min-width: 440px; }
-        .clx-lateral { writing-mode: vertical-rl; transform: rotate(180deg); background: #2554C7; color: #F7F5EF;
+        .clx-lateral { writing-mode: vertical-rl; background: #2554C7; color: #F7F5EF;
           font-weight: 800; font-size: 13px; letter-spacing: 2px; display: flex; align-items: center; justify-content: center;
           padding: 10px 6px; flex-shrink: 0; }
         .clx-conteudo { flex: 1; min-width: 0; background: #F7F5EF; }
@@ -2038,8 +2038,8 @@ export default function PalpitaoApp() {
         .clx-cabecalho-topo { text-align: center; margin-bottom: 6px; }
         .clx-titulo-principal { display: block; color: #1a1a1a; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; }
         .clx-titulo-sub { display: block; color: #444; font-weight: 700; font-size: 11px; margin-top: 2px; }
-        .clx-colunas-header { display: flex; align-items: center; gap: 4px; padding: 6px 0 4px; font-size: 12px; font-weight: 800;
-          color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.4px; }
+        .clx-colunas-header { display: flex; align-items: center; gap: 4px; padding: 6px 0 4px; font-size: 10.5px; font-weight: 800;
+          color: #1a1a1a; text-transform: uppercase; letter-spacing: 0; }
         .clx-h-num { width: 22px; flex-shrink: 0; }
         .clx-h-nome { width: 120px; flex-shrink: 0; }
         .clx-h-pontos { width: 34px; flex-shrink: 0; text-align: center; }
@@ -2105,7 +2105,7 @@ export default function PalpitaoApp() {
         .rod-scroll-outer { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border-radius: 10px;
           border: 1px solid rgba(247,245,239,0.14); margin-top: 6px; }
         .rod-tabela-wrap { display: flex; min-width: 300px; }
-        .rod-lateral { writing-mode: vertical-rl; transform: rotate(180deg); background: #2554C7; color: #F7F5EF;
+        .rod-lateral { writing-mode: vertical-rl; background: #2554C7; color: #F7F5EF;
           font-weight: 800; font-size: 13px; letter-spacing: 2px; display: flex; align-items: center; justify-content: center;
           padding: 10px 6px; flex-shrink: 0; }
         .rod-conteudo { flex: 1; min-width: 0; background: #F7F5EF; }
@@ -2129,7 +2129,7 @@ export default function PalpitaoApp() {
         .viz-scroll-outer { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border-radius: 10px;
           border: 1px solid rgba(247,245,239,0.14); margin-top: 6px; }
         .viz-tabela-wrap { display: flex; min-width: 460px; }
-        .viz-lateral { writing-mode: vertical-rl; transform: rotate(180deg); background: #2554C7; color: #F7F5EF;
+        .viz-lateral { writing-mode: vertical-rl; background: #2554C7; color: #F7F5EF;
           font-weight: 800; font-size: 13px; letter-spacing: 2px; display: flex; align-items: center; justify-content: center;
           padding: 10px 6px; flex-shrink: 0; }
         .viz-conteudo { flex: 1; min-width: 0; background: #F7F5EF; }
