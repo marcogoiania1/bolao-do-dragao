@@ -2038,19 +2038,21 @@ export default function PalpitaoApp() {
         .clx-cabecalho-topo { text-align: center; margin-bottom: 6px; }
         .clx-titulo-principal { display: block; color: #1a1a1a; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; }
         .clx-titulo-sub { display: block; color: #444; font-weight: 700; font-size: 11px; margin-top: 2px; }
-        .clx-colunas-header { display: flex; align-items: center; gap: 4px; padding: 6px 0 4px; font-size: 10.5px; font-weight: 800;
+        .clx-grid-pontuacao { display: grid; grid-template-columns: 120px repeat(7, 34px); column-gap: 4px; align-items: center; }
+        .clx-grid-classificacao { display: grid; grid-template-columns: 22px 120px repeat(5, 34px); column-gap: 4px; align-items: center; }
+        .clx-colunas-header { padding: 6px 0 4px; font-size: 10.5px; font-weight: 800;
           color: #1a1a1a; text-transform: uppercase; letter-spacing: 0; }
-        .clx-h-num { width: 22px; flex-shrink: 0; }
-        .clx-h-nome { width: 120px; flex-shrink: 0; }
-        .clx-h-pontos { width: 34px; flex-shrink: 0; text-align: center; }
-        .clx-h-tipo { width: 34px; flex-shrink: 0; text-align: center; }
+        .clx-h-num { text-align: center; }
+        .clx-h-nome { }
+        .clx-h-pontos { text-align: center; }
+        .clx-h-tipo { text-align: center; }
         .clx-linhas { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-        .clx-linha { display: flex; align-items: center; gap: 4px; padding: 6px 8px; font-size: 11.5px; color: #1a1a1a; }
+        .clx-linha { padding: 6px 8px; font-size: 11.5px; color: #1a1a1a; }
         .clx-linha-par { background: rgba(74,222,128,0.14); }
-        .clx-col-num { width: 22px; flex-shrink: 0; text-align: center; font-size: 10.5px; font-weight: 800; border-radius: 5px; padding: 2px 0; }
-        .clx-col-nome { width: 120px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; text-align: left; padding-left: 4px; box-sizing: border-box; }
-        .clx-col-pontos { width: 34px; flex-shrink: 0; text-align: center; }
-        .clx-col-num-tipo { width: 34px; flex-shrink: 0; text-align: center; }
+        .clx-col-num { text-align: center; font-size: 10.5px; font-weight: 800; border-radius: 5px; padding: 2px 0; justify-self: center; width: 22px; }
+        .clx-col-nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; text-align: left; padding-left: 4px; box-sizing: border-box; }
+        .clx-col-pontos { text-align: center; }
+        .clx-col-num-tipo { text-align: center; }
         .clx-pos-alta { background: #22C55E; color: #fff; }
         .clx-pos-media { background: #F2C230; color: #3a2c00; }
         .clx-pos-baixa { background: #E11D2E; color: #fff; }
@@ -2117,14 +2119,15 @@ export default function PalpitaoApp() {
           border-radius: 6px; padding: 4px 8px; margin-bottom: 6px; }
         .rod-confronto-nomes { color: #1a1a1a; font-weight: 700; font-size: 11.5px; }
         .rod-confronto-placar { color: #2554C7; font-weight: 800; font-size: 13px; }
-        .rod-colunas-header { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 10px; font-weight: 800;
+        .rod-colunas-header, .rod-linha { display: grid; grid-template-columns: 22px 1fr 80px; column-gap: 4px; align-items: center; }
+        .rod-colunas-header { padding: 4px 0; font-size: 10px; font-weight: 800;
           color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.5px; }
         .rod-linhas { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-        .rod-linha { display: flex; align-items: center; gap: 4px; padding: 7px 8px; font-size: 12.5px; color: #1a1a1a; }
+        .rod-linha { padding: 7px 8px; font-size: 12.5px; color: #1a1a1a; }
         .rod-linha-par { background: rgba(74,222,128,0.12); }
-        .rod-col-num { width: 22px; flex-shrink: 0; text-align: right; color: #666; font-size: 10.5px; }
-        .rod-col-nome { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-        .rod-col-palpite { width: 80px; flex-shrink: 0; text-align: center; font-weight: 700; }
+        .rod-col-num { text-align: right; color: #666; font-size: 10.5px; }
+        .rod-col-nome { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+        .rod-col-palpite { text-align: center; font-weight: 700; }
 
         .viz-scroll-outer { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; border-radius: 10px;
           border: 1px solid rgba(247,245,239,0.14); margin-top: 6px; }
@@ -2141,17 +2144,18 @@ export default function PalpitaoApp() {
           border-radius: 6px; padding: 4px 8px; margin-bottom: 6px; }
         .viz-confronto-nomes { color: #1a1a1a; font-weight: 700; font-size: 11.5px; }
         .viz-confronto-placar { color: #2554C7; font-weight: 800; font-size: 13px; }
-        .viz-colunas-header { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 10px; font-weight: 800;
+        .viz-colunas-header, .viz-linha { display: grid; grid-template-columns: 22px 110px 62px 30px 36px; column-gap: 4px; align-items: center; }
+        .viz-colunas-header { padding: 4px 0; font-size: 10px; font-weight: 800;
           color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.5px; }
         .viz-linhas { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-        .viz-linha { display: flex; align-items: center; gap: 4px; padding: 7px 8px; font-size: 12px; color: #1a1a1a; }
+        .viz-linha { padding: 7px 8px; font-size: 12px; color: #1a1a1a; }
         .viz-linha-par { background: rgba(74,222,128,0.12); }
-        .viz-col-num { width: 22px; flex-shrink: 0; text-align: right; color: #666; font-size: 10.5px; }
-        .viz-col-nome { width: 110px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-        .viz-col-palpite { width: 62px; flex-shrink: 0; text-align: center; font-weight: 700; }
+        .viz-col-num { text-align: right; color: #666; font-size: 10.5px; }
+        .viz-col-nome { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+        .viz-col-palpite { text-align: center; font-weight: 700; }
         .viz-palpite-wo { color: #E11D2E; font-weight: 800; font-size: 10.5px; }
-        .viz-col-pts { width: 30px; flex-shrink: 0; text-align: center; }
-        .viz-col-acum { width: 36px; flex-shrink: 0; text-align: right; font-weight: 700; color: #1a1a1a; }
+        .viz-col-pts { text-align: center; }
+        .viz-col-acum { text-align: right; font-weight: 700; color: #1a1a1a; }
         .btn-tela-cheia { width: 100%; background: rgba(242,194,48,0.15); border: 1px solid rgba(242,194,48,0.45); color: var(--floodlight);
           border-radius: 8px; padding: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer; display: flex;
           align-items: center; justify-content: center; gap: 6px; margin-top: 10px; }
@@ -3116,7 +3120,7 @@ export default function PalpitaoApp() {
                       <span className="clx-titulo-principal">Brasileirão Série B 2026</span>
                       <span className="clx-titulo-sub">Participantes — Pontuação</span>
                     </div>
-                    <div className="clx-colunas-header">
+                    <div className="clx-colunas-header clx-grid-pontuacao">
                       <span className="clx-h-nome"></span>
                       <span className="clx-h-pontos">PTS</span>
                       <span className="clx-h-tipo">CRAV</span>
@@ -3129,7 +3133,7 @@ export default function PalpitaoApp() {
                   </div>
                   <div className="clx-linhas">
                     {[...classificacao].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((c, i) => (
-                      <div className={`clx-linha ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
+                      <div className={`clx-linha clx-grid-pontuacao ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
                         <span className="clx-col-nome" title={c.nome}>{c.nome}</span>
                         <span className="clx-col-pontos pcor-badge pcor-pts">{c.pontos}</span>
                         <span className="clx-col-num-tipo pcor-badge pcor-crav">{c.cravadas}</span>
@@ -3174,7 +3178,7 @@ export default function PalpitaoApp() {
                       <span className="clx-titulo-principal">Brasileirão Série B 2026</span>
                       <span className="clx-titulo-sub">Participantes</span>
                     </div>
-                    <div className="clx-colunas-header">
+                    <div className="clx-colunas-header clx-grid-classificacao">
                       <span className="clx-h-num"></span>
                       <span className="clx-h-nome"></span>
                       <span className="clx-h-pontos">PTS</span>
@@ -3191,7 +3195,7 @@ export default function PalpitaoApp() {
                       const ultimos5 = !top5 && total > 5 && i >= total - 5;
                       const posClasse = top5 ? "clx-pos-alta" : ultimos5 ? "clx-pos-baixa" : "clx-pos-media";
                       return (
-                        <div className={`clx-linha ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
+                        <div className={`clx-linha clx-grid-classificacao ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
                           <span className={`clx-col-num ${posClasse}`}>{i + 1}</span>
                           <span className="clx-col-nome" title={c.nome}>{c.nome}</span>
                           <span className="clx-col-pontos pcor-badge pcor-pts">{c.pontos}</span>
@@ -3677,7 +3681,7 @@ export default function PalpitaoApp() {
                       <span className="clx-titulo-principal">Brasileirão Série B 2026</span>
                       <span className="clx-titulo-sub">Participantes</span>
                     </div>
-                    <div className="clx-colunas-header">
+                    <div className="clx-colunas-header clx-grid-classificacao">
                       <span className="clx-h-num"></span>
                       <span className="clx-h-nome"></span>
                       <span className="clx-h-pontos">PTS</span>
@@ -3694,7 +3698,7 @@ export default function PalpitaoApp() {
                       const ultimos5 = !top5 && total > 5 && i >= total - 5;
                       const posClasse = top5 ? "clx-pos-alta" : ultimos5 ? "clx-pos-baixa" : "clx-pos-media";
                       return (
-                        <div className={`clx-linha ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
+                        <div className={`clx-linha clx-grid-classificacao ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
                           <span className={`clx-col-num ${posClasse}`}>{i + 1}</span>
                           <span className="clx-col-nome" title={c.nome}>{c.nome}</span>
                           <span className="clx-col-pontos pcor-badge pcor-pts">{c.pontos}</span>
@@ -3729,7 +3733,7 @@ export default function PalpitaoApp() {
                       <span className="clx-titulo-principal">Brasileirão Série B 2026</span>
                       <span className="clx-titulo-sub">Participantes — Pontuação</span>
                     </div>
-                    <div className="clx-colunas-header">
+                    <div className="clx-colunas-header clx-grid-pontuacao">
                       <span className="clx-h-nome"></span>
                       <span className="clx-h-pontos">PTS</span>
                       <span className="clx-h-tipo">CRAV</span>
@@ -3742,7 +3746,7 @@ export default function PalpitaoApp() {
                   </div>
                   <div className="clx-linhas">
                     {[...classificacao].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((c, i) => (
-                      <div className={`clx-linha ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
+                      <div className={`clx-linha clx-grid-pontuacao ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
                         <span className="clx-col-nome" title={c.nome}>{c.nome}</span>
                         <span className="clx-col-pontos pcor-badge pcor-pts">{c.pontos}</span>
                         <span className="clx-col-num-tipo pcor-badge pcor-crav">{c.cravadas}</span>
