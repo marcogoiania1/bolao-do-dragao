@@ -62,6 +62,21 @@ function jogoJaComecou(jogo) {
   return new Date() >= inicio;
 }
 
+// Descobre qual é a "rodada atual" pra abrir por padrão nas telas de Postar Palpites / Palpites de Todos / Palpites da Rodada:
+// 1) a rodada que o Admin liberou pra palpite agora, se houver uma;
+// 2) senão, a rodada do próximo jogo que ainda vai começar (o mais próximo no tempo);
+// 3) senão (todos os jogos já aconteceram, ou nenhum jogo cadastrado), a última rodada cadastrada.
+function rodadaAtualNumero(lista) {
+  if (!lista || lista.length === 0) return null;
+  const liberado = lista.find((j) => j.liberado);
+  if (liberado) return liberado.rodada;
+  const futuros = [...lista]
+    .filter((j) => !jogoJaComecou(j))
+    .sort((a, b) => new Date(`${a.data}T${a.hora}:00`) - new Date(`${b.data}T${b.hora}:00`));
+  if (futuros.length > 0) return futuros[0].rodada;
+  return Math.max(...lista.map((j) => j.rodada));
+}
+
 // pontuação de um palpite comparado ao resultado final do jogo:
 // 6 = cravada (placar exato) | 4 = vencedor certo + gols certos de um time
 // 3 = vencedor/empate certo, sem acertar os gols | 1 = só acertou os gols de um time | 0 = nada
@@ -1044,12 +1059,32 @@ export default function PalpitaoApp() {
     }
   }, [screen, token]);
 
-  // sempre que entra nas telas de Jogos ou Meus Palpites, começa o carrossel do primeiro jogo
+  // sempre que entra na tela de Jogos, começa o carrossel do primeiro jogo (essa tela é de gestão do Admin,
+  // não precisa abrir na "rodada atual" como as telas de participante)
   useEffect(() => {
     if (screen === "jogos") setIndiceJogoCarrossel(0);
-    if (screen === "palpites") setIndicePalpiteCarrossel(0);
     if (screen === "desempenho") setParticipanteDestacadoId(null);
   }, [screen]);
+
+  // ao SAIR das telas de Postar Palpites / Palpites da Rodada / Palpites de Todos, zera a posição guardada —
+  // assim, da próxima vez que a pessoa abrir qualquer uma delas, os efeitos abaixo recalculam a rodada atual do zero
+  const posicionouPalpitesRef = useRef(false);
+  useEffect(() => {
+    if (screen !== "palpites") posicionouPalpitesRef.current = false;
+    if (screen !== "rodada") setRodadaSelecionadaId("");
+    if (screen !== "palpitesVisualizar") setRodadaVisualizarId("");
+  }, [screen]);
+
+  // tela "Postar Palpites": ao entrar, posiciona o carrossel na RODADA ATUAL (a liberada, ou a mais próxima de
+  // acontecer, ou a última cadastrada) em vez de sempre voltar pro primeiro jogo cadastrado
+  useEffect(() => {
+    if (screen === "palpites" && jogos.length > 0 && !posicionouPalpitesRef.current) {
+      const rAtual = rodadaAtualNumero(jogos);
+      const idx = jogos.findIndex((j) => j.rodada === rAtual);
+      setIndicePalpiteCarrossel(idx >= 0 ? idx : 0);
+      posicionouPalpitesRef.current = true;
+    }
+  }, [screen, jogos]);
 
   // sempre que entra na tela de Times ou de Jogos, busca a lista de clubes (nome + escudo) via "GET /clubes"
   useEffect(() => {
@@ -1080,10 +1115,12 @@ export default function PalpitaoApp() {
     }
   }, [screen, token, participanteAlvoId]);
 
-  // tela "Palpites da Rodada": seleciona o primeiro jogo automaticamente e recarrega ao trocar de jogo
+  // tela "Palpites da Rodada": seleciona automaticamente o primeiro jogo da RODADA ATUAL e recarrega ao trocar de jogo
   useEffect(() => {
     if (screen === "rodada" && jogos.length > 0 && !rodadaSelecionadaId) {
-      setRodadaSelecionadaId(jogos[0].id);
+      const rAtual = rodadaAtualNumero(jogos);
+      const alvo = jogos.find((j) => j.rodada === rAtual) || jogos[0];
+      setRodadaSelecionadaId(alvo.id);
     }
   }, [screen, jogos, rodadaSelecionadaId]);
 
@@ -2011,7 +2048,7 @@ export default function PalpitaoApp() {
         .clx-linha { display: flex; align-items: center; gap: 4px; padding: 6px 8px; font-size: 11.5px; color: #1a1a1a; }
         .clx-linha-par { background: rgba(74,222,128,0.14); }
         .clx-col-num { width: 22px; flex-shrink: 0; text-align: center; font-size: 10.5px; font-weight: 800; border-radius: 5px; padding: 2px 0; }
-        .clx-col-nome { width: 120px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; text-align: left; padding-left: 4px; }
+        .clx-col-nome { width: 120px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; text-align: left; padding-left: 4px; box-sizing: border-box; }
         .clx-col-pontos { width: 34px; flex-shrink: 0; text-align: center; }
         .clx-col-num-tipo { width: 34px; flex-shrink: 0; text-align: center; }
         .clx-pos-alta { background: #22C55E; color: #fff; }
@@ -2080,7 +2117,7 @@ export default function PalpitaoApp() {
           border-radius: 6px; padding: 4px 8px; margin-bottom: 6px; }
         .rod-confronto-nomes { color: #1a1a1a; font-weight: 700; font-size: 11.5px; }
         .rod-confronto-placar { color: #2554C7; font-weight: 800; font-size: 13px; }
-        .rod-colunas-header { display: flex; align-items: center; gap: 4px; padding: 4px 2px; font-size: 10px; font-weight: 800;
+        .rod-colunas-header { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 10px; font-weight: 800;
           color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.5px; }
         .rod-linhas { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .rod-linha { display: flex; align-items: center; gap: 4px; padding: 7px 8px; font-size: 12.5px; color: #1a1a1a; }
@@ -2104,7 +2141,7 @@ export default function PalpitaoApp() {
           border-radius: 6px; padding: 4px 8px; margin-bottom: 6px; }
         .viz-confronto-nomes { color: #1a1a1a; font-weight: 700; font-size: 11.5px; }
         .viz-confronto-placar { color: #2554C7; font-weight: 800; font-size: 13px; }
-        .viz-colunas-header { display: flex; align-items: center; gap: 4px; padding: 4px 2px; font-size: 10px; font-weight: 800;
+        .viz-colunas-header { display: flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 10px; font-weight: 800;
           color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.5px; }
         .viz-linhas { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .viz-linha { display: flex; align-items: center; gap: 4px; padding: 7px 8px; font-size: 12px; color: #1a1a1a; }
@@ -2130,8 +2167,8 @@ export default function PalpitaoApp() {
           width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
         .tela-cheia-fechar:hover { background: rgba(0,0,0,0.15); }
         .tela-cheia-scroll { overflow: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
-        .tela-cheia-scroll .viz-tabela-wrap, .tela-cheia-scroll .clx-tabela-wrap { min-width: unset; width: max-content; }
-        .tela-cheia-scroll .viz-linhas, .tela-cheia-scroll .clx-linhas { max-height: none; overflow: visible; }
+        .tela-cheia-scroll .viz-tabela-wrap, .tela-cheia-scroll .clx-tabela-wrap, .tela-cheia-scroll .rod-tabela-wrap { min-width: unset; width: max-content; }
+        .tela-cheia-scroll .viz-linhas, .tela-cheia-scroll .clx-linhas, .tela-cheia-scroll .rod-linhas { max-height: none; overflow: visible; }
 
         .aviso-armazenamento { display: flex; gap: 10px; align-items: flex-start; background: rgba(242,194,48,0.1);
           border: 1px solid rgba(242,194,48,0.4); border-radius: 10px; padding: 12px; margin-bottom: 14px; color: var(--chalk); }
@@ -2892,8 +2929,12 @@ export default function PalpitaoApp() {
 
 
         {screen === "palpitesVisualizar" && currentUser && (() => {
-          const jogoAtual = rodadasVisualizacao.find((r) => r.id === rodadaVisualizarId)
-            || rodadasVisualizacao[rodadasVisualizacao.length - 1];
+          const idx = rodadasVisualizacao.length > 0
+            ? (rodadaVisualizarId
+                ? Math.max(0, rodadasVisualizacao.findIndex((r) => r.id === rodadaVisualizarId))
+                : rodadasVisualizacao.length - 1)
+            : -1;
+          const jogoAtual = idx >= 0 ? rodadasVisualizacao[idx] : null;
           return (
             <div className="screen">
               <button className="btn-voltar" onClick={() => setScreen("palpitesHub")}><ArrowLeft size={16} /> VOLTAR</button>
@@ -2904,17 +2945,19 @@ export default function PalpitaoApp() {
               )}
 
               {rodadasVisualizacao.length > 0 && (
-                <div className="field">
-                  <label><Hash size={12} /> Escolha a rodada</label>
-                  <div className="input-wrap select-wrap">
-                    <select value={jogoAtual ? jogoAtual.id : ""} onChange={(e) => setRodadaVisualizarId(e.target.value)}>
-                      {rodadasVisualizacao.map((r) => (
-                        <option key={r.id} value={r.id}>R{String(r.rodada).padStart(2, "0")} — {r.mandante} x {r.visitante}</option>
-                      ))}
-                    </select>
-                  </div>
+                <div className="carrossel-nav">
+                  <button className="carrossel-seta" onClick={() => setRodadaVisualizarId(rodadasVisualizacao[Math.max(0, idx - 1)].id)} disabled={idx <= 0}>
+                    <ChevronLeft size={18} />
+                  </button>
+                  <span className="carrossel-rodada-pill">
+                    {jogoAtual ? `Rodada ${String(jogoAtual.rodada).padStart(2, "0")}` : "—"}
+                  </span>
+                  <button className="carrossel-seta" onClick={() => setRodadaVisualizarId(rodadasVisualizacao[Math.min(rodadasVisualizacao.length - 1, idx + 1)].id)} disabled={idx >= rodadasVisualizacao.length - 1}>
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
               )}
+              {jogoAtual && <span className="carrossel-contador" style={{ display: "block", textAlign: "center", marginTop: -6, marginBottom: 8 }}>{idx + 1} de {rodadasVisualizacao.length} — {jogoAtual.mandante} x {jogoAtual.visitante}</span>}
 
               {loadingVisualizacao && <div className="log-empty"><Loader2 size={14} className="spin" /> Carregando…</div>}
 
@@ -2975,23 +3018,29 @@ export default function PalpitaoApp() {
         })()}
 
         {screen === "rodada" && currentUser && (() => {
-          const jogoAtual = jogos.find((j) => j.id === rodadaSelecionadaId);
+          const idx = jogos.length > 0 ? Math.max(0, jogos.findIndex((j) => j.id === rodadaSelecionadaId)) : -1;
+          const jogoAtual = idx >= 0 ? jogos[idx] : null;
           return (
             <div className="screen">
               <button className="btn-voltar" onClick={() => setScreen("palpitesHub")}><ArrowLeft size={16} /> VOLTAR</button>
               <h2 className="title">Palpites da Rodada</h2>
 
-              <div className="field">
-                <label><Hash size={12} /> Escolha o jogo</label>
-                <div className="input-wrap select-wrap">
-                  <select value={rodadaSelecionadaId} onChange={(e) => setRodadaSelecionadaId(e.target.value)}>
-                    {jogos.length === 0 && <option value="">Nenhum jogo cadastrado</option>}
-                    {jogos.map((j) => (
-                      <option key={j.id} value={j.id}>R{String(j.rodada).padStart(2, "0")} — {j.mandante} x {j.visitante}</option>
-                    ))}
-                  </select>
+              {jogos.length === 0 && <div className="log-empty">Nenhum jogo cadastrado ainda.</div>}
+
+              {jogos.length > 0 && (
+                <div className="carrossel-nav">
+                  <button className="carrossel-seta" onClick={() => setRodadaSelecionadaId(jogos[Math.max(0, idx - 1)].id)} disabled={idx <= 0}>
+                    <ChevronLeft size={18} />
+                  </button>
+                  <span className="carrossel-rodada-pill">
+                    {jogoAtual ? `Rodada ${String(jogoAtual.rodada).padStart(2, "0")}` : "—"}
+                  </span>
+                  <button className="carrossel-seta" onClick={() => setRodadaSelecionadaId(jogos[Math.min(jogos.length - 1, idx + 1)].id)} disabled={idx >= jogos.length - 1}>
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
-              </div>
+              )}
+              {jogoAtual && <span className="carrossel-contador" style={{ display: "block", textAlign: "center", marginTop: -6, marginBottom: 8 }}>{idx + 1} de {jogos.length} — {jogoAtual.mandante} x {jogoAtual.visitante}</span>}
 
               {loadingRodada && <div className="log-empty"><Loader2 size={14} className="spin" /> Carregando…</div>}
 
@@ -3031,6 +3080,12 @@ export default function PalpitaoApp() {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {jogoAtual && !loadingRodada && (
+                <button className="btn-tela-cheia" type="button" onClick={() => abrirTelaCheia("rodada")}>
+                  <ExternalLink size={14} /> Ver em tela cheia
+                </button>
               )}
             </div>
           );
@@ -3547,6 +3602,56 @@ export default function PalpitaoApp() {
                           </div>
                         );
                       })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {telaCheiaTipo === "rodada" && (() => {
+        const jogoAtual = jogos.find((j) => j.id === rodadaSelecionadaId);
+        if (!jogoAtual) return null;
+        return (
+          <div className="tela-cheia-overlay" onClick={fecharTelaCheia}>
+            <div className="tela-cheia-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="tela-cheia-topo">
+                <strong>Palpites da Rodada</strong>
+                <button className="tela-cheia-fechar" onClick={fecharTelaCheia}><X size={17} /></button>
+              </div>
+              <div className="tela-cheia-scroll">
+                <div className="rod-tabela-wrap">
+                  <span className="rod-lateral">PALPITES DA RODADA</span>
+                  <div className="rod-conteudo">
+                    <div className="rod-cabecalho">
+                      <div className="rod-cabecalho-topo">
+                        <span className="rod-rodada-nome">{String(jogoAtual.rodada).padStart(2, "0")}ª Rodada</span>
+                        <span className="rod-rodada-data">{jogoAtual.data?.split("-").reverse().join("/")} {jogoAtual.hora}</span>
+                      </div>
+                      <div className="rod-confronto-final">
+                        <span className="rod-confronto-nomes">{jogoAtual.mandante} x {jogoAtual.visitante}</span>
+                        {jogoAtual.resultadoMandante !== null && jogoAtual.resultadoMandante !== undefined && (
+                          <span className="rod-confronto-placar">{jogoAtual.resultadoMandante} x {jogoAtual.resultadoVisitante}</span>
+                        )}
+                      </div>
+                      <div className="rod-colunas-header">
+                        <span className="rod-col-num">#</span>
+                        <span className="rod-col-nome">Participantes</span>
+                        <span className="rod-col-palpite">Palpite</span>
+                      </div>
+                    </div>
+                    <div className="rod-linhas">
+                      {rodadaTodos.map((p, i) => (
+                        <div className={`rod-linha ${i % 2 === 0 ? "rod-linha-par" : ""}`} key={i}>
+                          <span className="rod-col-num">{i + 1}</span>
+                          <span className="rod-col-nome" title={p.nome}>{p.nome}</span>
+                          <span className="rod-col-palpite">
+                            {p.registrado ? `${p.placarMandante} x ${p.placarVisitante}` : ""}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
