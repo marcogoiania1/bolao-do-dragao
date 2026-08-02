@@ -104,6 +104,7 @@ export default function PalpitaoApp() {
   const [loadingJogosLista, setLoadingJogosLista] = useState(false);
   const [indiceJogoCarrossel, setIndiceJogoCarrossel] = useState(0);
   const [indicePalpiteCarrossel, setIndicePalpiteCarrossel] = useState(0);
+  const [participanteDestacadoId, setParticipanteDestacadoId] = useState(null); // linha em destaque no gráfico de Desempenho
 
   // ---------------- Times (clubes com escudo, reutilizados nos jogos) ----------------
   const [clubes, setClubes] = useState([]);
@@ -1047,6 +1048,7 @@ export default function PalpitaoApp() {
   useEffect(() => {
     if (screen === "jogos") setIndiceJogoCarrossel(0);
     if (screen === "palpites") setIndicePalpiteCarrossel(0);
+    if (screen === "desempenho") setParticipanteDestacadoId(null);
   }, [screen]);
 
   // sempre que entra na tela de Times ou de Jogos, busca a lista de clubes (nome + escudo) via "GET /clubes"
@@ -1999,7 +2001,7 @@ export default function PalpitaoApp() {
         .clx-cabecalho-topo { text-align: center; margin-bottom: 6px; }
         .clx-titulo-principal { display: block; color: #1a1a1a; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 0.3px; }
         .clx-titulo-sub { display: block; color: #444; font-weight: 700; font-size: 11px; margin-top: 2px; }
-        .clx-colunas-header { display: flex; align-items: center; gap: 4px; padding: 6px 8px 4px; font-size: 12px; font-weight: 800;
+        .clx-colunas-header { display: flex; align-items: center; gap: 4px; padding: 6px 0 4px; font-size: 12px; font-weight: 800;
           color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.4px; }
         .clx-h-num { width: 22px; flex-shrink: 0; }
         .clx-h-nome { width: 120px; flex-shrink: 0; }
@@ -2019,6 +2021,10 @@ export default function PalpitaoApp() {
         .grafico-wrap { background: rgba(247,245,239,0.03); border-radius: 12px; padding: 10px 4px 4px; margin-bottom: 14px; }
         .legenda-grafico { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 2px 4px; }
         .legenda-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--chalk); }
+        .legenda-item-clicavel { background: none; border: none; padding: 3px 6px; border-radius: 6px; cursor: pointer;
+          transition: opacity 0.15s ease; font-family: inherit; }
+        .legenda-item-clicavel:hover { background: rgba(247,245,239,0.08); }
+        .legenda-dica { color: var(--muted); font-size: 11px; margin: 2px 0 6px; text-align: center; }
         .legenda-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
         .log-empty { color: var(--muted); font-size: 12.5px; text-align: center; padding: 20px 0; }
@@ -3184,24 +3190,46 @@ export default function PalpitaoApp() {
                       <XAxis dataKey="rodada" tick={{ fill: "#C99C9C", fontSize: 10 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
                       <YAxis tick={{ fill: "#C99C9C", fontSize: 10 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
                       <Tooltip contentStyle={{ background: "#1a0808", border: "1px solid rgba(242,194,48,0.3)", fontSize: 12 }} />
-                      {seriesOrdenada.map((s, i) => (
-                        <Line key={s.participanteId} type="monotone" dataKey={s.nome} stroke={corDesempenho(i, seriesOrdenada.length)}
-                          strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} />
-                      ))}
+                      {seriesOrdenada.map((s, i) => {
+                        const emDestaque = !participanteDestacadoId || participanteDestacadoId === s.participanteId;
+                        return (
+                          <Line key={s.participanteId} type="monotone" dataKey={s.nome} stroke={corDesempenho(i, seriesOrdenada.length)}
+                            strokeWidth={participanteDestacadoId === s.participanteId ? 3.5 : 2}
+                            strokeOpacity={emDestaque ? 1 : 0.12}
+                            dot={emDestaque ? { r: 2 } : false} activeDot={emDestaque ? { r: 4 } : false}
+                            isAnimationActive={false} />
+                        );
+                      })}
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
               )}
 
               {seriesOrdenada.length > 0 && (
+                <>
+                <p className="legenda-dica">
+                  {participanteDestacadoId
+                    ? "Toque de novo no nome pra voltar a ver todo mundo."
+                    : "Com muita gente cadastrada as linhas se sobrepõem — toque no nome de alguém pra destacar só a linha dele."}
+                </p>
                 <div className="legenda-grafico">
-                  {seriesOrdenada.map((s, i) => (
-                    <div className="legenda-item" key={s.participanteId}>
-                      <span className="legenda-dot" style={{ background: corDesempenho(i, seriesOrdenada.length) }} />
-                      <span>{s.nome}</span>
-                    </div>
-                  ))}
+                  {seriesOrdenada.map((s, i) => {
+                    const emDestaque = !participanteDestacadoId || participanteDestacadoId === s.participanteId;
+                    return (
+                      <button
+                        type="button"
+                        className="legenda-item legenda-item-clicavel"
+                        key={s.participanteId}
+                        style={{ opacity: emDestaque ? 1 : 0.4 }}
+                        onClick={() => setParticipanteDestacadoId((atual) => (atual === s.participanteId ? null : s.participanteId))}
+                      >
+                        <span className="legenda-dot" style={{ background: corDesempenho(i, seriesOrdenada.length) }} />
+                        <span>{s.nome}</span>
+                      </button>
+                    );
+                  })}
                 </div>
+                </>
               )}
 
               {evolucaoRodadas.length > 0 && (
@@ -3653,22 +3681,44 @@ export default function PalpitaoApp() {
                       <XAxis dataKey="rodada" tick={{ fill: "#C99C9C", fontSize: 11 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
                       <YAxis tick={{ fill: "#C99C9C", fontSize: 11 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
                       <Tooltip contentStyle={{ background: "#1a0808", border: "1px solid rgba(242,194,48,0.3)", fontSize: 12 }} />
-                      {seriesOrdenada.map((s, i) => (
-                        <Line key={s.participanteId} type="monotone" dataKey={s.nome} stroke={corDesempenho(i, seriesOrdenada.length)}
-                          strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 5 }} />
-                      ))}
+                      {seriesOrdenada.map((s, i) => {
+                        const emDestaque = !participanteDestacadoId || participanteDestacadoId === s.participanteId;
+                        return (
+                          <Line key={s.participanteId} type="monotone" dataKey={s.nome} stroke={corDesempenho(i, seriesOrdenada.length)}
+                            strokeWidth={participanteDestacadoId === s.participanteId ? 4 : 2}
+                            strokeOpacity={emDestaque ? 1 : 0.12}
+                            dot={emDestaque ? { r: 2 } : false} activeDot={emDestaque ? { r: 5 } : false}
+                            isAnimationActive={false} />
+                        );
+                      })}
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
                 {seriesOrdenada.length > 0 && (
+                  <>
+                  <p className="legenda-dica">
+                    {participanteDestacadoId
+                      ? "Toque de novo no nome pra voltar a ver todo mundo."
+                      : "Toque no nome de alguém pra destacar só a linha dele."}
+                  </p>
                   <div className="legenda-grafico legenda-grafico-cheia">
-                    {seriesOrdenada.map((s, i) => (
-                      <div className="legenda-item" key={s.participanteId}>
-                        <span className="legenda-dot" style={{ background: corDesempenho(i, seriesOrdenada.length) }} />
-                        <span>{s.nome}</span>
-                      </div>
-                    ))}
+                    {seriesOrdenada.map((s, i) => {
+                      const emDestaque = !participanteDestacadoId || participanteDestacadoId === s.participanteId;
+                      return (
+                        <button
+                          type="button"
+                          className="legenda-item legenda-item-clicavel"
+                          key={s.participanteId}
+                          style={{ opacity: emDestaque ? 1 : 0.4 }}
+                          onClick={() => setParticipanteDestacadoId((atual) => (atual === s.participanteId ? null : s.participanteId))}
+                        >
+                          <span className="legenda-dot" style={{ background: corDesempenho(i, seriesOrdenada.length) }} />
+                          <span>{s.nome}</span>
+                        </button>
+                      );
+                    })}
                   </div>
+                  </>
                 )}
               </div>
             </div>
