@@ -171,6 +171,11 @@ export default function PalpitaoApp() {
   const [evolucaoSeries, setEvolucaoSeries] = useState([]);
   const [loadingDesempenho, setLoadingDesempenho] = useState(false);
 
+  const [hallGeral, setHallGeral] = useState([]);
+  const [hallPorRodada, setHallPorRodada] = useState([]);
+  const [loadingHall, setLoadingHall] = useState(false);
+  const [indiceHallRodada, setIndiceHallRodada] = useState(0);
+
   const [promovendoId, setPromovendoId] = useState(null);
   const [confirmarExclusaoId, setConfirmarExclusaoId] = useState(null);
   const [excluindoId, setExcluindoId] = useState(null);
@@ -804,21 +809,65 @@ export default function PalpitaoApp() {
         else if (pts === 1) um++;
         else zero++;
       });
-      return { id: part.id, nome: part.nome, cravadas, quatro, tres, um, zero, wo, pontos };
+      return { id: part.id, nome: part.nome, foto_url: part.foto_url || "", cravadas, quatro, tres, um, zero, wo, pontos };
     });
 
     linhas.sort((a, b) => {
-      if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas;
-      if (b.quatro !== a.quatro) return b.quatro - a.quatro;
-      if (b.tres !== a.tres) return b.tres - a.tres;
-      if (b.um !== a.um) return b.um - a.um;
-      if (a.zero !== b.zero) return a.zero - b.zero; // menos rodadas sem pontuar fica na frente
-      if (a.wo !== b.wo) return a.wo - b.wo; // último critério: menos W.O. fica na frente
+      if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas; // 1º: mais cravadas (6 pontos)
+      if (b.quatro !== a.quatro) return b.quatro - a.quatro; // 2º: mais "X 4" (4 pontos)
+      if (b.tres !== a.tres) return b.tres - a.tres; // 3º: mais "X 3"
+      if (b.um !== a.um) return b.um - a.um; // 4º: mais "X 1"
+      if (a.wo !== b.wo) return a.wo - b.wo; // 5º: menos vezes em branco/W.O.
+      if (a.zero !== b.zero) return a.zero - b.zero; // 6º: menos vezes que postou e não pontuou ("X 0")
       return a.nome.localeCompare(b.nome, "pt-BR"); // empate final: ordem alfabética
     });
 
     registrarLog("GET", "/pontuacao", 200, { jogosContabilizados: jogosComResultado.length, total: linhas.length });
     return { status: 200, body: { classificacao: linhas, jogosContabilizados: jogosComResultado.length } };
+  }
+
+  // HALL DA FAMA: reaproveita a mesma classificação geral (com o critério de desempate oficial) pro
+  // pódio geral e pra "Zona de Rebaixamento", e calcula à parte a pontuação DE CADA RODADA (não acumulada)
+  // pra montar o "Top 4 da rodada" navegável.
+  async function apiListarHallDaFama(tok) {
+    await delay(450);
+    if (!lerToken(tok)) {
+      const body = { erro: "Token inválido ou ausente." };
+      registrarLog("GET", "/hall-da-fama", 401, body);
+      return { status: 401, body };
+    }
+    const geralRes = await apiListarPontuacao(tok);
+    const geral = geralRes.status === 200 ? geralRes.body.classificacao : [];
+
+    const [participantesLidos, jogosLidos, palpitesLidos] = await Promise.all([
+      carregarParticipantes(), carregarJogos(), carregarPalpites(),
+    ]);
+    const participantes = participantesLidos ?? bancoRef.current;
+    const jogosSalvos = jogosLidos ?? jogosRef.current;
+    const palpitesSalvos = palpitesLidos ?? palpitesRef.current;
+    const jogosComResultado = jogosSalvos.filter(
+      (j) => j.resultadoMandante !== null && j.resultadoMandante !== undefined
+    );
+    const rodadasComResultado = [...new Set(jogosComResultado.map((j) => j.rodada))].sort((a, b) => a - b);
+
+    const porRodada = rodadasComResultado.map((rodada) => {
+      const jogosDaRodada = jogosComResultado.filter((j) => j.rodada === rodada);
+      const linhas = participantes.map((part) => {
+        let pontos = 0;
+        jogosDaRodada.forEach((j) => {
+          const p = palpitesSalvos.find((x) => x.participanteId === part.id && x.jogoId === j.id);
+          if (!p) return; // não postou nessa rodada específica = 0 pontos nela (sem penalizar o ranking da rodada)
+          pontos += classificarPalpite(p.placarMandante, p.placarVisitante, j.resultadoMandante, j.resultadoVisitante);
+        });
+        return { id: part.id, nome: part.nome, foto_url: part.foto_url || "", pontos };
+      });
+      linhas.sort((a, b) => b.pontos - a.pontos || a.nome.localeCompare(b.nome, "pt-BR"));
+      return { rodada, top4: linhas.slice(0, 4) };
+    });
+
+    const body = { geral, porRodada };
+    registrarLog("GET", "/hall-da-fama", 200, { totalGeral: geral.length, rodadasComResultado: porRodada.length });
+    return { status: 200, body };
   }
 
   // monta, pra cada rodada já com resultado, a lista de todos os participantes com o palpite daquela
@@ -1157,6 +1206,21 @@ export default function PalpitaoApp() {
           setEvolucaoSeries(res.body.series);
         }
         setLoadingDesempenho(false);
+      });
+    }
+  }, [screen, token]);
+
+  useEffect(() => {
+    if (screen === "hallDaFama" && token) {
+      setLoadingHall(true);
+      apiListarHallDaFama(token).then((res) => {
+        if (res.status === 200) {
+          setHallGeral(res.body.geral);
+          setHallPorRodada(res.body.porRodada);
+          // abre direto na rodada mais recente com resultado, já que faz mais sentido do que começar na 1ª
+          setIndiceHallRodada(res.body.porRodada.length ? res.body.porRodada.length - 1 : 0);
+        }
+        setLoadingHall(false);
       });
     }
   }, [screen, token]);
@@ -2056,6 +2120,8 @@ export default function PalpitaoApp() {
         .clx-pos-alta { background: #22C55E; color: #fff; }
         .clx-pos-media { background: #F2C230; color: #3a2c00; }
         .clx-pos-baixa { background: #E11D2E; color: #fff; }
+        .clx-nome-alta { background: #22C55E; color: #fff; border-radius: 4px; padding: 2px 4px; }
+        .clx-nome-baixa { background: #E11D2E; color: #fff; border-radius: 4px; padding: 2px 4px; }
 
         .grafico-wrap { background: rgba(247,245,239,0.03); border-radius: 12px; padding: 10px 4px 4px; margin-bottom: 14px; }
         .legenda-grafico { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 2px 4px; }
@@ -2064,6 +2130,28 @@ export default function PalpitaoApp() {
           transition: opacity 0.15s ease; font-family: inherit; }
         .legenda-item-clicavel:hover { background: rgba(247,245,239,0.08); }
         .legenda-dica { color: var(--muted); font-size: 11px; margin: 2px 0 6px; text-align: center; }
+
+        /* ---------- Hall da Fama ---------- */
+        .hall-secao { margin: 18px 0; }
+        .hall-titulo { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 12.5px;
+          font-weight: 800; color: var(--chalk); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+        .hall-titulo-ouro { color: var(--floodlight); }
+        .hall-titulo-rebaixamento { color: #FF8A7D; }
+        .hall-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .hall-card { background: rgba(247,245,239,0.05); border: 1px solid var(--pitch-line); border-radius: 12px;
+          padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
+        .hall-card-geral.hall-card-pos-1 { border-color: var(--floodlight); background: rgba(242,194,48,0.14); }
+        .hall-card-geral.hall-card-pos-2 { border-color: rgba(247,245,239,0.35); }
+        .hall-card-geral.hall-card-pos-3 { border-color: rgba(205,127,50,0.55); }
+        .hall-card-rebaixamento { border-color: rgba(225,29,46,0.4); background: rgba(225,29,46,0.08); }
+        .hall-pos-badge { font-size: 11px; font-weight: 800; color: var(--floodlight); }
+        .hall-pos-badge-rebaixamento { color: #FF8A7D; }
+        .hall-avatar { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; background: rgba(247,245,239,0.1);
+          display: flex; align-items: center; justify-content: center; color: var(--muted); flex-shrink: 0; }
+        .hall-avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .hall-nome { font-size: 12px; font-weight: 700; color: var(--chalk); line-height: 1.25;
+          display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .hall-pontos { font-size: 15px; font-weight: 800; color: var(--floodlight); }
         .legenda-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
         .log-empty { color: var(--muted); font-size: 12.5px; text-align: center; padding: 20px 0; }
@@ -2218,14 +2306,16 @@ export default function PalpitaoApp() {
                 <label><UserIcon size={12} /> Nome completo</label>
                 <div className="input-wrap">
                   <UserIcon size={16} />
-                  <input value={loginContato} onChange={(e) => setLoginContato(e.target.value)} placeholder="Seu nome completo" />
+                  <input value={loginContato} onChange={(e) => setLoginContato(e.target.value)} placeholder="Seu nome completo"
+                    autoComplete="off" name="login-nome-bolao" />
                 </div>
               </div>
               <div className="field">
                 <label><Lock size={12} /> Senha</label>
                 <div className="input-wrap">
                   <Lock size={16} />
-                  <input type={mostrarSenhaLogin ? "text" : "password"} value={loginSenha} onChange={(e) => setLoginSenha(e.target.value)} placeholder="Sua senha" />
+                  <input type={mostrarSenhaLogin ? "text" : "password"} value={loginSenha} onChange={(e) => setLoginSenha(e.target.value)} placeholder="Sua senha"
+                    autoComplete="new-password" name="login-senha-bolao" />
                   <button type="button" className="btn-olho" onClick={() => setMostrarSenhaLogin((v) => !v)} tabIndex={-1}>
                     {mostrarSenhaLogin ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -2391,6 +2481,14 @@ export default function PalpitaoApp() {
                 <span className="menu-item-text">
                   <strong>Desempenho</strong>
                   <small>Gráfico de evolução desde a 1ª rodada</small>
+                </span>
+                <ChevronRight size={16} />
+              </button>
+              <button className="menu-item" onClick={() => setScreen("hallDaFama")}>
+                <span className="menu-item-icon"><Crown size={18} /></span>
+                <span className="menu-item-text">
+                  <strong>Hall da Fama</strong>
+                  <small>Os melhores do geral, da rodada e a zona de rebaixamento</small>
                 </span>
                 <ChevronRight size={16} />
               </button>
@@ -3191,13 +3289,14 @@ export default function PalpitaoApp() {
                   <div className="clx-linhas">
                     {classificacao.map((c, i) => {
                       const total = classificacao.length;
-                      const top5 = i < 5;
-                      const ultimos5 = !top5 && total > 5 && i >= total - 5;
-                      const posClasse = top5 ? "clx-pos-alta" : ultimos5 ? "clx-pos-baixa" : "clx-pos-media";
+                      const top4 = i < 4;
+                      const ultimos4 = !top4 && total > 4 && i >= total - 4;
+                      const posClasse = top4 ? "clx-pos-alta" : ultimos4 ? "clx-pos-baixa" : "clx-pos-media";
+                      const nomeClasse = top4 ? "clx-nome-alta" : ultimos4 ? "clx-nome-baixa" : "";
                       return (
                         <div className={`clx-linha clx-grid-classificacao ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
                           <span className={`clx-col-num ${posClasse}`}>{i + 1}</span>
-                          <span className="clx-col-nome" title={c.nome}>{c.nome}</span>
+                          <span className={`clx-col-nome ${nomeClasse}`} title={c.nome}>{c.nome}</span>
                           <span className="clx-col-pontos pcor-badge pcor-pts">{c.pontos}</span>
                           <span className="clx-col-num-tipo pcor-badge pcor-crav">{c.cravadas}</span>
                           <span className="clx-col-num-tipo pcor-badge pcor-x4">{c.quatro}</span>
@@ -3295,6 +3394,97 @@ export default function PalpitaoApp() {
                 <button className="btn-tela-cheia" type="button" onClick={() => abrirTelaCheia("desempenho")}>
                   <ExternalLink size={14} /> Ver em tela cheia
                 </button>
+              )}
+            </div>
+          );
+        })()}
+
+        {screen === "hallDaFama" && currentUser && (() => {
+          const top4Geral = hallGeral.slice(0, 4);
+          const total = hallGeral.length;
+          const ultimos4Geral = total > 4 ? hallGeral.slice(Math.max(4, total - 4)) : [];
+          const idxRodada = hallPorRodada.length ? Math.min(indiceHallRodada, hallPorRodada.length - 1) : 0;
+          const rodadaAtual = hallPorRodada[idxRodada];
+          return (
+            <div className="screen">
+              <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
+              <h2 className="title">Hall da Fama</h2>
+
+              {loadingHall && <div className="log-empty"><Loader2 size={14} className="spin" /> Calculando o Hall da Fama…</div>}
+              {!loadingHall && hallGeral.length === 0 && (
+                <div className="log-empty">Ainda não há jogos com resultado final registrado.</div>
+              )}
+
+              {!loadingHall && hallGeral.length > 0 && (
+                <>
+                  {/* -------- Pódio geral (fixo, do início até a rodada mais recente) -------- */}
+                  <div className="hall-secao">
+                    <div className="hall-titulo hall-titulo-ouro"><Crown size={14} /> Hall da Fama — Geral</div>
+                    <div className="hall-grid">
+                      {top4Geral.map((p, i) => (
+                        <div className={`hall-card hall-card-geral hall-card-pos-${i + 1}`} key={p.id}>
+                          <span className="hall-pos-badge">{i + 1}º</span>
+                          <div className="hall-avatar">
+                            {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
+                          </div>
+                          <span className="hall-nome" title={p.nome}>{p.nome}</span>
+                          <span className="hall-pontos">{p.pontos} pts</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* -------- Top 4 por rodada (navega com as setas) -------- */}
+                  {rodadaAtual && (
+                    <div className="hall-secao">
+                      <div className="hall-titulo"><Trophy size={14} /> Top 4 da Rodada</div>
+                      <div className="carrossel-nav">
+                        <button className="carrossel-seta" onClick={() => setIndiceHallRodada((i) => Math.max(0, i - 1))} disabled={idxRodada === 0}>
+                          <ChevronLeft size={18} />
+                        </button>
+                        <span className="carrossel-rodada-pill">Rodada {String(rodadaAtual.rodada).padStart(2, "0")}</span>
+                        <button className="carrossel-seta" onClick={() => setIndiceHallRodada((i) => Math.min(hallPorRodada.length - 1, i + 1))} disabled={idxRodada === hallPorRodada.length - 1}>
+                          <ChevronRight size={18} />
+                        </button>
+                      </div>
+                      <div className="hall-grid">
+                        {rodadaAtual.top4.map((p, i) => (
+                          <div className="hall-card" key={p.id}>
+                            <span className="hall-pos-badge">{i + 1}º</span>
+                            <div className="hall-avatar">
+                              {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
+                            </div>
+                            <span className="hall-nome" title={p.nome}>{p.nome}</span>
+                            <span className="hall-pontos">{p.pontos} pts</span>
+                          </div>
+                        ))}
+                      </div>
+                      <span className="carrossel-contador">{idxRodada + 1} de {hallPorRodada.length}</span>
+                    </div>
+                  )}
+
+                  {/* -------- Zona de rebaixamento (fixo, os 4 últimos do geral) -------- */}
+                  {ultimos4Geral.length > 0 && (
+                    <div className="hall-secao">
+                      <div className="hall-titulo hall-titulo-rebaixamento">Zona de Rebaixamento</div>
+                      <div className="hall-grid">
+                        {ultimos4Geral.map((p) => {
+                          const posicao = total - ultimos4Geral.length + ultimos4Geral.indexOf(p) + 1;
+                          return (
+                            <div className="hall-card hall-card-rebaixamento" key={p.id}>
+                              <span className="hall-pos-badge hall-pos-badge-rebaixamento">{posicao}º</span>
+                              <div className="hall-avatar">
+                                {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
+                              </div>
+                              <span className="hall-nome" title={p.nome}>{p.nome}</span>
+                              <span className="hall-pontos">{p.pontos} pts</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           );
@@ -3694,13 +3884,14 @@ export default function PalpitaoApp() {
                   <div className="clx-linhas">
                     {classificacao.map((c, i) => {
                       const total = classificacao.length;
-                      const top5 = i < 5;
-                      const ultimos5 = !top5 && total > 5 && i >= total - 5;
-                      const posClasse = top5 ? "clx-pos-alta" : ultimos5 ? "clx-pos-baixa" : "clx-pos-media";
+                      const top4 = i < 4;
+                      const ultimos4 = !top4 && total > 4 && i >= total - 4;
+                      const posClasse = top4 ? "clx-pos-alta" : ultimos4 ? "clx-pos-baixa" : "clx-pos-media";
+                      const nomeClasse = top4 ? "clx-nome-alta" : ultimos4 ? "clx-nome-baixa" : "";
                       return (
                         <div className={`clx-linha clx-grid-classificacao ${i % 2 === 0 ? "clx-linha-par" : ""}`} key={c.id}>
                           <span className={`clx-col-num ${posClasse}`}>{i + 1}</span>
-                          <span className="clx-col-nome" title={c.nome}>{c.nome}</span>
+                          <span className={`clx-col-nome ${nomeClasse}`} title={c.nome}>{c.nome}</span>
                           <span className="clx-col-pontos pcor-badge pcor-pts">{c.pontos}</span>
                           <span className="clx-col-num-tipo pcor-badge pcor-crav">{c.cravadas}</span>
                           <span className="clx-col-num-tipo pcor-badge pcor-x4">{c.quatro}</span>
