@@ -3101,7 +3101,6 @@ export default function PalpitaoApp() {
                   </button>
                 </div>
               )}
-              {jogoAtual && <span className="carrossel-contador" style={{ display: "block", textAlign: "center", marginTop: -6, marginBottom: 8 }}>{idx + 1} de {rodadasVisualizacao.length} — {jogoAtual.mandante} x {jogoAtual.visitante}</span>}
 
               {loadingVisualizacao && <div className="log-empty"><Loader2 size={14} className="spin" /> Carregando…</div>}
 
@@ -3184,7 +3183,6 @@ export default function PalpitaoApp() {
                   </button>
                 </div>
               )}
-              {jogoAtual && <span className="carrossel-contador" style={{ display: "block", textAlign: "center", marginTop: -6, marginBottom: 8 }}>{idx + 1} de {jogos.length} — {jogoAtual.mandante} x {jogoAtual.visitante}</span>}
 
               {loadingRodada && <div className="log-empty"><Loader2 size={14} className="spin" /> Carregando…</div>}
 
