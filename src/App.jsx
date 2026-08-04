@@ -1297,6 +1297,39 @@ export default function PalpitaoApp() {
   }
 
   // Desenha o escudo do time (se cadastrado) ou um círculo com a inicial do nome, como alternativa visual.
+  // Desenha o "pódio": 1º lugar em destaque no topo com coroa, 2º/3º/4º menores numa fileira embaixo.
+  // Reaproveitado tanto no Hall da Fama Geral quanto no Top 4 da Rodada.
+  function renderPodioTop4(lista) {
+    if (!lista || lista.length === 0) return null;
+    const [primeiro, ...resto] = lista;
+    return (
+      <div className="hall-podio">
+        <div className="hall-podio-primeiro">
+          <Crown size={28} className="hall-coroa" />
+          <div className="hall-avatar hall-avatar-grande">
+            {primeiro.foto_url ? <img src={primeiro.foto_url} alt={primeiro.nome} /> : <UserIcon size={30} />}
+          </div>
+          <span className="hall-nome" title={primeiro.nome}>{primeiro.nome}</span>
+          <span className="hall-pontos">{primeiro.pontos} pts</span>
+        </div>
+        {resto.length > 0 && (
+          <div className="hall-podio-resto">
+            {resto.map((p, i) => (
+              <div className="hall-card" key={p.id}>
+                <span className="hall-pos-badge">{i + 2}º</span>
+                <div className="hall-avatar">
+                  {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
+                </div>
+                <span className="hall-nome" title={p.nome}>{p.nome}</span>
+                <span className="hall-pontos">{p.pontos} pts</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderEscudo(clubeId, nomeFallback, size = 56) {
     const clube = getClubePorId(clubeId);
     if (clube && clube.escudo_url) {
@@ -1836,6 +1869,7 @@ export default function PalpitaoApp() {
         @keyframes loadbar { 0% { transform: translateX(-100%);} 100% { transform: translateX(340%);} }
 
         .title { color: var(--chalk); font-size: 24px; font-weight: 700; margin: 4px 0 18px; }
+        .title-centralizado { text-align: center; }
         label { color: var(--floodlight-soft); font-size: 12.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
           margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
         .field { margin-bottom: 14px; }
@@ -1952,10 +1986,11 @@ export default function PalpitaoApp() {
         /* ---------- Cartão de jogo (escudos + placar) com navegação por setas ---------- */
         .jogo-carrossel { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 6px 0 4px; }
         .carrossel-nav { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 380px; gap: 8px; }
-        .carrossel-seta { background: rgba(247,245,239,0.08); border: 1px solid var(--pitch-line); border-radius: 50%;
-          width: 34px; height: 34px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-          color: var(--chalk); cursor: pointer; }
-        .carrossel-seta:disabled { opacity: 0.3; cursor: default; }
+        .carrossel-seta { background: var(--chalk); border: 2px solid var(--floodlight); border-radius: 50%;
+          width: 38px; height: 38px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+          color: var(--pitch-dark); cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.35); transition: transform 0.12s ease; }
+        .carrossel-seta:hover:not(:disabled) { transform: scale(1.08); }
+        .carrossel-seta:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
         .carrossel-rodada-pill { background: rgba(0,0,0,0.35); border: 1px solid var(--pitch-line); border-radius: 20px;
           padding: 7px 18px; font-weight: 800; font-size: 13px; letter-spacing: 0.4px; color: var(--floodlight); white-space: nowrap; }
         .cartao-jogo { width: 100%; max-width: 380px; background: linear-gradient(160deg, var(--pitch-dark), var(--pitch-mid));
@@ -2140,9 +2175,6 @@ export default function PalpitaoApp() {
         .hall-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
         .hall-card { background: rgba(247,245,239,0.05); border: 1px solid var(--pitch-line); border-radius: 12px;
           padding: 12px 8px 10px; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; }
-        .hall-card-geral.hall-card-pos-1 { border-color: var(--floodlight); background: rgba(242,194,48,0.14); }
-        .hall-card-geral.hall-card-pos-2 { border-color: rgba(247,245,239,0.35); }
-        .hall-card-geral.hall-card-pos-3 { border-color: rgba(205,127,50,0.55); }
         .hall-card-rebaixamento { border-color: rgba(225,29,46,0.4); background: rgba(225,29,46,0.08); }
         .hall-pos-badge { font-size: 11px; font-weight: 800; color: var(--floodlight); }
         .hall-pos-badge-rebaixamento { color: #FF8A7D; }
@@ -2152,6 +2184,16 @@ export default function PalpitaoApp() {
         .hall-nome { font-size: 12px; font-weight: 700; color: var(--chalk); line-height: 1.25;
           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .hall-pontos { font-size: 15px; font-weight: 800; color: var(--floodlight); }
+
+        .hall-podio { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+        .hall-podio-primeiro { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .hall-coroa { color: var(--floodlight); filter: drop-shadow(0 2px 3px rgba(0,0,0,0.45)); margin-bottom: -6px; }
+        .hall-avatar-grande { width: 92px; height: 92px; border: 3px solid var(--floodlight); box-shadow: 0 0 0 4px rgba(242,194,48,0.15); }
+        .hall-podio-primeiro .hall-nome { font-size: 14px; margin-top: 2px; }
+        .hall-podio-primeiro .hall-pontos { font-size: 18px; }
+        .hall-podio-resto { display: flex; gap: 8px; justify-content: center; width: 100%; }
+        .hall-podio-resto .hall-card { flex: 1; min-width: 0; padding: 10px 4px 8px; }
+        .hall-podio-resto .hall-avatar { width: 46px; height: 46px; }
         .legenda-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
         .log-empty { color: var(--muted); font-size: 12.5px; text-align: center; padding: 20px 0; }
@@ -3408,7 +3450,7 @@ export default function PalpitaoApp() {
           return (
             <div className="screen">
               <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
-              <h2 className="title">Hall da Fama</h2>
+              <h2 className="title title-centralizado">Hall da Fama</h2>
 
               {loadingHall && <div className="log-empty"><Loader2 size={14} className="spin" /> Calculando o Hall da Fama…</div>}
               {!loadingHall && hallGeral.length === 0 && (
@@ -3420,18 +3462,7 @@ export default function PalpitaoApp() {
                   {/* -------- Pódio geral (fixo, do início até a rodada mais recente) -------- */}
                   <div className="hall-secao">
                     <div className="hall-titulo hall-titulo-ouro"><Crown size={14} /> Hall da Fama — Geral</div>
-                    <div className="hall-grid">
-                      {top4Geral.map((p, i) => (
-                        <div className={`hall-card hall-card-geral hall-card-pos-${i + 1}`} key={p.id}>
-                          <span className="hall-pos-badge">{i + 1}º</span>
-                          <div className="hall-avatar">
-                            {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
-                          </div>
-                          <span className="hall-nome" title={p.nome}>{p.nome}</span>
-                          <span className="hall-pontos">{p.pontos} pts</span>
-                        </div>
-                      ))}
-                    </div>
+                    {renderPodioTop4(top4Geral)}
                   </div>
 
                   {/* -------- Top 4 por rodada (navega com as setas) -------- */}
@@ -3447,18 +3478,7 @@ export default function PalpitaoApp() {
                           <ChevronRight size={18} />
                         </button>
                       </div>
-                      <div className="hall-grid">
-                        {rodadaAtual.top4.map((p, i) => (
-                          <div className="hall-card" key={p.id}>
-                            <span className="hall-pos-badge">{i + 1}º</span>
-                            <div className="hall-avatar">
-                              {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
-                            </div>
-                            <span className="hall-nome" title={p.nome}>{p.nome}</span>
-                            <span className="hall-pontos">{p.pontos} pts</span>
-                          </div>
-                        ))}
-                      </div>
+                      {renderPodioTop4(rodadaAtual.top4)}
                       <span className="carrossel-contador">{idxRodada + 1} de {hallPorRodada.length}</span>
                     </div>
                   )}
