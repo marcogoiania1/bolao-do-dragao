@@ -862,7 +862,16 @@ export default function PalpitaoApp() {
         return { id: part.id, nome: part.nome, foto_url: part.foto_url || "", pontos };
       });
       linhas.sort((a, b) => b.pontos - a.pontos || a.nome.localeCompare(b.nome, "pt-BR"));
-      return { rodada, top4: linhas.slice(0, 4) };
+      // Normalmente mostra os 4 primeiros da rodada — mas se tiver empate bem no limite (ex: 5º participante
+      // fez a mesma pontuação do 4º, todo mundo cravando o placar ou empatando com a mesma pontuação alta),
+      // amplia o corte pra incluir todo mundo empatado, em vez de cortar arbitrariamente um deles fora.
+      // Empates em 0 ponto não contam pra isso (não faz sentido "destacar" quem não pontuou).
+      let corte = Math.min(4, linhas.length);
+      if (linhas.length > 4 && linhas[3].pontos > 0) {
+        const pontosDoCorte = linhas[3].pontos;
+        while (corte < linhas.length && linhas[corte].pontos === pontosDoCorte) corte++;
+      }
+      return { rodada, top4: linhas.slice(0, corte) };
     });
 
     const body = { geral, porRodada };
@@ -1297,15 +1306,15 @@ export default function PalpitaoApp() {
   }
 
   // Desenha o escudo do time (se cadastrado) ou um círculo com a inicial do nome, como alternativa visual.
-  // Desenha o "pódio": 1º lugar em destaque no topo com coroa, 2º/3º/4º menores numa fileira embaixo.
-  // Reaproveitado tanto no Hall da Fama Geral quanto no Top 4 da Rodada.
-  function renderPodioTop4(lista) {
+  // Desenha o "pódio": 1º lugar em destaque no topo (com coroa, se mostrarCoroa=true), 2º/3º/4º+ numa fileira embaixo.
+  // Reaproveitado tanto no Hall da Fama Geral (com coroa) quanto no Top 4 da Rodada (sem coroa).
+  function renderPodioTop4(lista, mostrarCoroa = true) {
     if (!lista || lista.length === 0) return null;
     const [primeiro, ...resto] = lista;
     return (
       <div className="hall-podio">
         <div className="hall-podio-primeiro">
-          <Crown size={28} className="hall-coroa" />
+          {mostrarCoroa && <Crown size={28} className="hall-coroa" />}
           <div className="hall-avatar hall-avatar-grande">
             {primeiro.foto_url ? <img src={primeiro.foto_url} alt={primeiro.nome} /> : <UserIcon size={30} />}
           </div>
@@ -2191,8 +2200,8 @@ export default function PalpitaoApp() {
         .hall-avatar-grande { width: 92px; height: 92px; border: 3px solid var(--floodlight); box-shadow: 0 0 0 4px rgba(242,194,48,0.15); }
         .hall-podio-primeiro .hall-nome { font-size: 14px; margin-top: 2px; }
         .hall-podio-primeiro .hall-pontos { font-size: 18px; }
-        .hall-podio-resto { display: flex; gap: 8px; justify-content: center; width: 100%; }
-        .hall-podio-resto .hall-card { flex: 1; min-width: 0; padding: 10px 4px 8px; }
+        .hall-podio-resto { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: 100%; }
+        .hall-podio-resto .hall-card { flex: 1 1 90px; max-width: 130px; min-width: 90px; padding: 10px 4px 8px; }
         .hall-podio-resto .hall-avatar { width: 46px; height: 46px; }
         .legenda-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
@@ -3476,7 +3485,7 @@ export default function PalpitaoApp() {
                           <ChevronRight size={18} />
                         </button>
                       </div>
-                      {renderPodioTop4(rodadaAtual.top4)}
+                      {renderPodioTop4(rodadaAtual.top4, false)}
                       <span className="carrossel-contador">{idxRodada + 1} de {hallPorRodada.length}</span>
                     </div>
                   )}
