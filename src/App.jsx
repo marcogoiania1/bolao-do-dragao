@@ -813,6 +813,8 @@ export default function PalpitaoApp() {
     });
 
     linhas.sort((a, b) => {
+      if (b.pontos !== a.pontos) return b.pontos - a.pontos; // critério principal: mais pontos totais
+      // a partir daqui, só entra em ação se os pontos totais estiverem EMPATADOS:
       if (b.cravadas !== a.cravadas) return b.cravadas - a.cravadas; // 1º: mais cravadas (6 pontos)
       if (b.quatro !== a.quatro) return b.quatro - a.quatro; // 2º: mais "X 4" (4 pontos)
       if (b.tres !== a.tres) return b.tres - a.tres; // 3º: mais "X 3"
@@ -838,6 +840,9 @@ export default function PalpitaoApp() {
     }
     const geralRes = await apiListarPontuacao(tok);
     const geral = geralRes.status === 200 ? geralRes.body.classificacao : [];
+    // mapa "id do participante -> posição na Classificação Geral" (0 = 1º colocado), usado só pra desempatar
+    // quem exatamente entra nos 4 do Top 4 da Rodada quando duas ou mais pessoas empatam com a mesma pontuação
+    const posicaoGeral = new Map(geral.map((g, idx) => [g.id, idx]));
 
     const [participantesLidos, jogosLidos, palpitesLidos] = await Promise.all([
       carregarParticipantes(), carregarJogos(), carregarPalpites(),
@@ -861,8 +866,23 @@ export default function PalpitaoApp() {
         });
         return { id: part.id, nome: part.nome, foto_url: part.foto_url || "", pontos };
       });
-      linhas.sort((a, b) => b.pontos - a.pontos || a.nome.localeCompare(b.nome, "pt-BR"));
-      return { rodada, top4: linhas.slice(0, 4) };
+      linhas.sort((a, b) => {
+        if (b.pontos !== a.pontos) return b.pontos - a.pontos; // critério principal: mais pontos na rodada
+        // empate na pontuação da rodada: desempata pela Classificação Geral (quem está melhor colocado no geral entra primeiro)
+        const posA = posicaoGeral.has(a.id) ? posicaoGeral.get(a.id) : Infinity;
+        const posB = posicaoGeral.has(b.id) ? posicaoGeral.get(b.id) : Infinity;
+        if (posA !== posB) return posA - posB;
+        return a.nome.localeCompare(b.nome, "pt-BR"); // último recurso, se nem no geral desempatar
+      });
+      // Normalmente mostra exatamente os 4 primeiros da rodada (o desempate acima já decide quem são).
+      // EXCEÇÃO: se o corte cair bem em cima de quem CRAVOU o placar (6 pontos) e tiver mais gente empatada
+      // nos mesmos 6 pontos, amplia a lista pra incluir todo mundo que cravou — ninguém que acertou na mosca
+      // fica de fora só por "azar" na ordem. Empates abaixo de 6 pontos NÃO expandem a lista.
+      let corte = Math.min(4, linhas.length);
+      if (linhas.length > 4 && linhas[3].pontos === 6) {
+        while (corte < linhas.length && linhas[corte].pontos === 6) corte++;
+      }
+      return { rodada, top4: linhas.slice(0, corte) };
     });
 
     const body = { geral, porRodada };
@@ -1948,6 +1968,18 @@ export default function PalpitaoApp() {
         .menu-item-text small { font-size: 11.5px; color: var(--muted); }
         .menu-item svg:last-child { color: var(--muted); flex-shrink: 0; }
 
+        .menu-grade { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 18px; }
+        .menu-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+          gap: 8px; background: rgba(247,245,239,0.05); border: 1px solid rgba(247,245,239,0.12); border-radius: 16px;
+          padding: 18px 10px 14px; cursor: pointer; text-align: center; color: var(--chalk); min-height: 128px; }
+        .menu-tile:hover { background: rgba(247,245,239,0.09); }
+        .menu-tile:active { background: rgba(247,245,239,0.12); }
+        .menu-tile-icon { width: 52px; height: 52px; border-radius: 14px; background: rgba(242,194,48,0.14); color: var(--floodlight);
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .menu-tile strong { font-size: 13.5px; line-height: 1.2; }
+        .menu-tile small { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+        .menu-tile .badge-pendente { position: absolute; top: 10px; right: 10px; margin-right: 0; }
+
         .palpite-item { background: rgba(247,245,239,0.04); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
         .palpite-topo { display: flex; justify-content: space-between; align-items: center; }
         .palpite-confronto { display: flex; align-items: center; gap: 8px; justify-content: center; }
@@ -2191,8 +2223,8 @@ export default function PalpitaoApp() {
         .hall-avatar-grande { width: 92px; height: 92px; border: 3px solid var(--floodlight); box-shadow: 0 0 0 4px rgba(242,194,48,0.15); }
         .hall-podio-primeiro .hall-nome { font-size: 14px; margin-top: 2px; }
         .hall-podio-primeiro .hall-pontos { font-size: 18px; }
-        .hall-podio-resto { display: flex; gap: 8px; justify-content: center; width: 100%; }
-        .hall-podio-resto .hall-card { flex: 1; min-width: 0; padding: 10px 4px 8px; }
+        .hall-podio-resto { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: 100%; }
+        .hall-podio-resto .hall-card { flex: 1 1 90px; max-width: 130px; min-width: 90px; padding: 10px 4px 8px; }
         .hall-podio-resto .hall-avatar { width: 46px; height: 46px; }
         .legenda-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 
@@ -2452,124 +2484,85 @@ export default function PalpitaoApp() {
 
             <div className="section-label">Menu principal</div>
 
-            <div className="menu-list">
-              <button className="menu-item" onClick={() => setScreen("perfil")}>
-                <span className="menu-item-icon"><Users size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Participantes</strong>
-                  <small>Veja quem já entrou no bolão</small>
-                </span>
-                <ChevronRight size={16} />
+            <div className="menu-grade">
+              <button className="menu-tile" onClick={() => setScreen("perfil")}>
+                <span className="menu-tile-icon"><Users size={26} /></span>
+                <strong>Participantes</strong>
+                <small>Veja quem já entrou</small>
               </button>
               {currentUser.is_admin && (
-                <button className="menu-item" onClick={() => setScreen("aprovarParticipantes")}>
-                  <span className="menu-item-icon"><UserIcon size={18} /></span>
-                  <span className="menu-item-text">
-                    <strong>Aprovar Participantes</strong>
-                    <small>
-                      {users.filter((u) => u.aprovado === false).length > 0
-                        ? `${users.filter((u) => u.aprovado === false).length} aguardando aprovação`
-                        : "Nenhum pedido pendente"}
-                    </small>
-                  </span>
+                <button className="menu-tile" onClick={() => setScreen("aprovarParticipantes")}>
                   {users.filter((u) => u.aprovado === false).length > 0 && (
                     <span className="badge-pendente">{users.filter((u) => u.aprovado === false).length}</span>
                   )}
-                  <ChevronRight size={16} />
+                  <span className="menu-tile-icon"><UserIcon size={26} /></span>
+                  <strong>Aprovar Participantes</strong>
+                  <small>
+                    {users.filter((u) => u.aprovado === false).length > 0
+                      ? `${users.filter((u) => u.aprovado === false).length} aguardando`
+                      : "Nenhum pedido pendente"}
+                  </small>
                 </button>
               )}
-              <button className="menu-item" onClick={() => setScreen("times")}>
-                <span className="menu-item-icon"><Shield size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Times</strong>
-                  <small>{currentUser.is_admin ? "Cadastre os escudos dos clubes" : "Veja os times cadastrados"}</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={() => setScreen("times")}>
+                <span className="menu-tile-icon"><Shield size={26} /></span>
+                <strong>Times</strong>
+                <small>{currentUser.is_admin ? "Cadastre os escudos" : "Veja os times"}</small>
               </button>
-              <button className="menu-item" onClick={() => setScreen("jogos")}>
-                <span className="menu-item-icon"><Calendar size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Jogos da Série B</strong>
-                  <small>{currentUser.is_admin ? "Cadastre as rodadas" : "Veja a tabela de jogos"}</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={() => setScreen("jogos")}>
+                <span className="menu-tile-icon"><Calendar size={26} /></span>
+                <strong>Jogos da Série B</strong>
+                <small>{currentUser.is_admin ? "Cadastre as rodadas" : "Veja a tabela"}</small>
               </button>
-              <button className="menu-item" onClick={() => { setParticipanteAlvoId(""); setScreen("palpitesHub"); }}>
-                <span className="menu-item-icon"><Target size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Palpites</strong>
-                  <small>Aposte no placar e veja os palpites de todos</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={() => { setParticipanteAlvoId(""); setScreen("palpitesHub"); }}>
+                <span className="menu-tile-icon"><Target size={26} /></span>
+                <strong>Palpites</strong>
+                <small>Aposte e veja os palpites de todos</small>
               </button>
-              <button className="menu-item" onClick={() => setScreen("pontuacao")}>
-                <span className="menu-item-icon"><Crown size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Pontuação</strong>
-                  <small>Veja a pontuação por participantes</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={() => setScreen("pontuacao")}>
+                <span className="menu-tile-icon"><Crown size={26} /></span>
+                <strong>Pontuação</strong>
+                <small>Por participante</small>
               </button>
-              <button className="menu-item" onClick={() => setScreen("classificacaoLista")}>
-                <span className="menu-item-icon"><ClipboardList size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Classificação</strong>
-                  <small>Lista com o total de pontos por tipo</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={() => setScreen("classificacaoLista")}>
+                <span className="menu-tile-icon"><ClipboardList size={26} /></span>
+                <strong>Classificação</strong>
+                <small>Total por tipo de acerto</small>
               </button>
-              <button className="menu-item" onClick={() => setScreen("desempenho")}>
-                <span className="menu-item-icon"><TrendingUp size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Desempenho</strong>
-                  <small>Gráfico de evolução desde a 1ª rodada</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={() => setScreen("desempenho")}>
+                <span className="menu-tile-icon"><TrendingUp size={26} /></span>
+                <strong>Desempenho</strong>
+                <small>Gráfico desde a 1ª rodada</small>
               </button>
-              <button className="menu-item" onClick={() => setScreen("hallDaFama")}>
-                <span className="menu-item-icon"><Crown size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Hall da Fama</strong>
-                  <small>Os melhores do geral, da rodada e a zona de rebaixamento</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={() => setScreen("hallDaFama")}>
+                <span className="menu-tile-icon"><Crown size={26} /></span>
+                <strong>Hall da Fama</strong>
+                <small>Melhores, rodada e rebaixamento</small>
               </button>
-              <button className="menu-item" onClick={abrirEdicaoPerfil}>
-                <span className="menu-item-icon"><Settings size={18} /></span>
-                <span className="menu-item-text">
-                  <strong>Meu Perfil</strong>
-                  <small>Editar dados, senha e foto</small>
-                </span>
-                <ChevronRight size={16} />
+              <button className="menu-tile" onClick={abrirEdicaoPerfil}>
+                <span className="menu-tile-icon"><Settings size={26} /></span>
+                <strong>Meu Perfil</strong>
+                <small>Dados, senha e foto</small>
               </button>
               {currentUser.is_admin && (
-                <button className="menu-item" onClick={() => setScreen("liberarPalpites")}>
-                  <span className="menu-item-icon"><Unlock size={18} /></span>
-                  <span className="menu-item-text">
-                    <strong>Liberar Palpites</strong>
-                    <small>Libere rodadas e avise quem falta postar</small>
-                  </span>
-                  <ChevronRight size={16} />
+                <button className="menu-tile" onClick={() => setScreen("liberarPalpites")}>
+                  <span className="menu-tile-icon"><Unlock size={26} /></span>
+                  <strong>Liberar Palpites</strong>
+                  <small>Libere rodadas</small>
                 </button>
               )}
               {currentUser.is_admin && (
-                <button className="menu-item" onClick={() => setScreen("postarResultado")}>
-                  <span className="menu-item-icon"><Trophy size={18} /></span>
-                  <span className="menu-item-text">
-                    <strong>Postar Resultado</strong>
-                    <small>Registre o placar final de cada rodada</small>
-                  </span>
-                  <ChevronRight size={16} />
+                <button className="menu-tile" onClick={() => setScreen("postarResultado")}>
+                  <span className="menu-tile-icon"><Trophy size={26} /></span>
+                  <strong>Postar Resultado</strong>
+                  <small>Placar final de cada rodada</small>
                 </button>
               )}
               {currentUser.is_admin && (
-                <button className="menu-item" onClick={() => setScreen("backup")}>
-                  <span className="menu-item-icon"><Database size={18} /></span>
-                  <span className="menu-item-text">
-                    <strong>Exportar / Importar dados</strong>
-                    <small>Mova os dados entre links publicados</small>
-                  </span>
-                  <ChevronRight size={16} />
+                <button className="menu-tile" onClick={() => setScreen("backup")}>
+                  <span className="menu-tile-icon"><Database size={26} /></span>
+                  <strong>Exportar / Importar</strong>
+                  <small>Mova os dados entre links</small>
                 </button>
               )}
             </div>
