@@ -1119,6 +1119,33 @@ export default function PalpitaoApp() {
 
   // promove um participante a Administrador (mesmos privilégios) — só quem já é Admin pode fazer isso
   // Admin exclui um participante (ou a si mesmo)
+  // Exclui o participante APENAS da competição atual (vínculo + palpites dela). A conta e as outras competições não são afetadas.
+  async function apiExcluirParticipanteDaCompeticao(tok, participanteId) {
+    await delay(400);
+    const payload = lerToken(tok);
+    if (!payload || !payload.isAdmin) {
+      return { status: 403, body: { erro: "Só o Administrador ou Membro da Comissão pode excluir participantes." } };
+    }
+    const compId = compAtivaRef.current;
+    if (!compId) return { status: 400, body: { erro: "Nenhuma competição selecionada." } };
+    const lista = (await carregarParticipantes()) ?? bancoRef.current;
+    if (participanteId === idDoDono(lista)) {
+      return { status: 403, body: { erro: "O Administrador não pode ser excluído." } };
+    }
+    palpitesRef.current = (await carregarPalpites()) ?? palpitesRef.current;
+    palpitesRef.current = palpitesRef.current.filter((p) => p.participanteId !== participanteId);
+    await salvarPalpitesStorage(palpitesRef.current);
+    await mutarCompeticoes((cs) => cs.map((c) => {
+      if (c.id !== compId) return c; // outras competições ficam intactas
+      const m = { ...c.membros }; delete m[participanteId];
+      return { ...c, membros: m };
+    }));
+    invalidarTelasDerivadas();
+    registrarLog("DELETE", `/competicoes/${compId}/participantes/${participanteId}`, 200, { participanteId, compId });
+    return { status: 200, body: { ok: true } };
+  }
+
+  // (uso interno) exclusão da CONTA em si — não fica disponível na tela, pois afetaria todas as competições
   async function apiExcluirParticipante(tok, participanteId) {
     await delay(400);
     const payload = lerToken(tok);
@@ -1297,6 +1324,9 @@ export default function PalpitaoApp() {
     await delay(300);
     const payload = lerToken(tok);
     if (!payload || !payload.isAdmin) return { status: 403, body: { erro: "Só o Administrador pode criar competições." } };
+    if (idDoDono((await carregarParticipantes()) ?? bancoRef.current) !== payload.id) {
+      return { status: 403, body: { erro: "Só o Administrador (não o Membro da Comissão) pode criar competições." } };
+    }
     const limpo = (nome || "").trim();
     if (!limpo) return { status: 400, body: { erro: "Informe o nome da competição." } };
     const atual = (await carregarCompeticoes()) ?? competicoesRef.current;
@@ -1332,6 +1362,9 @@ export default function PalpitaoApp() {
     await delay(300);
     const payload = lerToken(tok);
     if (!payload || !payload.isAdmin) return { status: 403, body: { erro: "Só o Administrador pode excluir competições." } };
+    if (idDoDono((await carregarParticipantes()) ?? bancoRef.current) !== payload.id) {
+      return { status: 403, body: { erro: "Só o Administrador (não o Membro da Comissão) pode excluir competições." } };
+    }
     if (id === COMP_LEGADA_ID) return { status: 409, body: { erro: "A competição SERIE B 2026 não pode ser excluída." } };
     await Promise.all([
       storageSet(chaveJogosDe(id), "[]").catch(() => {}),
@@ -1799,7 +1832,14 @@ export default function PalpitaoApp() {
     setCompOcupadaId(id);
     try {
       const res = await apiExcluirCompeticao(token, id);
-      if (res.status === 200) setCompExcluirId(null);
+      if (res.status === 200) {
+        setCompExcluirId(null);
+        if (compAtivaRef.current === id) { // apagou a competição em que estava: sai dela
+          compAtivaRef.current = null; setCompAtivaId(null);
+          jogosRef.current = []; palpitesRef.current = []; clubesRef.current = [];
+          setJogos([]); setClubes([]); invalidarTelasDerivadas();
+        }
+      }
       else setCompErro(res.body.erro);
     } finally {
       setCompOcupadaId(null);
@@ -2175,7 +2215,7 @@ export default function PalpitaoApp() {
     setExcluirErro("");
     setExcluindoId(id);
     try {
-      const res = await apiExcluirParticipante(token, id);
+      const res = await apiExcluirParticipanteDaCompeticao(token, id);
       if (res.status === 200) {
         setConfirmarExclusaoId(null);
         if (id === currentUser.id) {
@@ -3317,7 +3357,7 @@ export default function PalpitaoApp() {
                   </div>
                 ) : confirmarExclusaoId === u.id ? (
                   <div className="list-item confirmar-exclusao" key={u.id}>
-                    <span className="n">Excluir a conta de <strong>{u.nome}</strong> (de todas as competições)?</span>
+                    <span className="n">Excluir <strong>{u.nome}</strong> de <strong>{compNome}</strong>? Os palpites dele(a) nesta competição serão apagados. Outras competições não são afetadas.</span>
                     <button className="btn-confirmar-sim" onClick={() => handleExcluirParticipante(u.id)} disabled={excluindoId === u.id}>
                       {excluindoId === u.id ? <Loader2 size={12} className="spin" /> : "Sim"}
                     </button>
@@ -3339,7 +3379,7 @@ export default function PalpitaoApp() {
                       </button>
                     )}
                     {currentUser.is_admin && u.id !== idDono && (
-                      <button className="jogo-del" title="Excluir participante" onClick={() => setConfirmarExclusaoId(u.id)}>
+                      <button className="jogo-del" title="Excluir da competição" onClick={() => setConfirmarExclusaoId(u.id)}>
                         <Trash2 size={14} />
                       </button>
                     )}
@@ -3526,7 +3566,7 @@ export default function PalpitaoApp() {
                 {compMsg && <div className="msg-sucesso"><Check size={15} />{compMsg}</div>}
                 {compErro && <div className="msg-error"><AlertCircle size={15} />{compErro}</div>}
 
-                <form onSubmit={handleCriarCompeticao}>
+                {ehDono ? (<form onSubmit={handleCriarCompeticao}>
                   <div className="field">
                     <label><Trophy size={12} /> Nome da nova competição</label>
                     <div className="input-wrap">
@@ -3548,7 +3588,9 @@ export default function PalpitaoApp() {
                   <button className="btn-primary" type="submit" disabled={loadingComp}>
                     {loadingComp ? <><Loader2 size={16} className="spin" /> CRIANDO…</> : <><Save size={16} /> CRIAR COMPETIÇÃO</>}
                   </button>
-                </form>
+                </form>) : (
+                  <p className="pontuacao-legenda">Criar e excluir competições é permitido apenas ao Administrador.</p>
+                )}
 
                 <div className="section-label" style={{ marginTop: 18 }}>Competições cadastradas ({competicoes.length})</div>
                 <div className="list">
@@ -3597,7 +3639,7 @@ export default function PalpitaoApp() {
                           {compOcupadaId === c.id ? <Loader2 size={12} className="spin" /> : <>Entrar</>}
                         </button>
                         <button className="btn-promover" title="Editar nome e logo" onClick={() => { setCompRenomearId(c.id); setCompRenomearNome(c.nome); setCompRenomearLogo(undefined); }}>Editar</button>
-                        {c.id !== COMP_LEGADA_ID && (
+                        {ehDono && c.id !== COMP_LEGADA_ID && (
                           <button className="jogo-del" title="Excluir competição" onClick={() => setCompExcluirId(c.id)}>
                             <Trash2 size={14} />
                           </button>
