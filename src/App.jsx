@@ -41,6 +41,20 @@ function idDoDono(lista) {
   const a = (lista || []).find((p) => p.is_admin);
   return a ? a.id : null;
 }
+const CHAVE_CHAT = "palpitao_chat"; // a Resenha é UMA só para o app inteiro (não por competição)
+const CHAVE_RESENHA_CONFIG = "palpitao_resenha_config"; // { escudo: imagem em base64 }
+function lerLocal(chave) { try { return localStorage.getItem(chave); } catch { return null; } }
+function gravarLocal(chave, valor) { try { localStorage.setItem(chave, valor); } catch { /* sem armazenamento local: ignora */ } }
+const CHAT_MAX_MENSAGENS = 300; // guarda só as mais recentes, pra não pesar
+const CHAT_MAX_CARACTERES = 500;
+function formatarHoraChat(iso) {
+  try {
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2, "0"), mm = String(d.getMonth() + 1).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0"), mi = String(d.getMinutes()).padStart(2, "0");
+    return `${dd}/${mm} ${hh}:${mi}`;
+  } catch { return ""; }
+}
 function chaveJogosDe(id) { return id === COMP_LEGADA_ID ? "palpitao_jogos" : `palpitao_jogos__${id}`; }
 function chaveClubesDe(id) { return id === COMP_LEGADA_ID ? "palpitao_clubes" : `palpitao_clubes__${id}`; }
 function chavePalpitesDe(id) { return id === COMP_LEGADA_ID ? "palpitao_palpites" : `palpitao_palpites__${id}`; }
@@ -255,6 +269,13 @@ export default function PalpitaoApp() {
   const [competicoes, setCompeticoes] = useState([]);
   const [compAtivaId, setCompAtivaId] = useState(null);
   const [compNomeForm, setCompNomeForm] = useState("");
+  const [chatMsgs, setChatMsgs] = useState([]);
+  const [chatTexto, setChatTexto] = useState("");
+  const [chatEnviando, setChatEnviando] = useState(false);
+  const [chatErro, setChatErro] = useState("");
+  const chatFimRef = useRef(null);
+  const [chatLidoTs, setChatLidoTs] = useState("");
+  const [resenhaEscudo, setResenhaEscudo] = useState(null);
   const [abaAprovar, setAbaAprovar] = useState("participantes"); // "participantes" | "solicitacoes"
   const [compLogoForm, setCompLogoForm] = useState(null);
   const [compRenomearLogo, setCompRenomearLogo] = useState(undefined); // undefined = não mexer; null = remover; string = nova logo
@@ -1204,6 +1225,7 @@ export default function PalpitaoApp() {
         storageSet(chavePalpitesDe(id), "[]").catch(() => {}),
         storageSet(chaveClubesDe(id), "[]").catch(() => {}),
       ]),
+      storageSet(CHAVE_CHAT, "[]").catch(() => {}),
     ]);
     const compsZeradas = [{ id: COMP_LEGADA_ID, nome: COMP_LEGADA_NOME, criado_em: new Date().toISOString(), membros: {} }];
     competicoesRef.current = compsZeradas;
@@ -1428,6 +1450,39 @@ export default function PalpitaoApp() {
     registrarLog("PUT", "/perfil", 200, { participante: { ...semSenha, foto_url: "(base64 da foto)" } });
     return { status: 200, body: { participante: semSenha } };
   }
+
+  // Resenha do Bolão: carrega e atualiza a cada 5 s enquanto a tela está aberta
+  useEffect(() => {
+    if (!currentUser) return;
+    if (screen !== "resenha" && screen !== "menu" && screen !== "competicoesHome") return;
+    atualizarChat();
+    if (screen === "resenha") carregarConfigResenha();
+    // na Resenha atualiza a cada 5 s; nas telas de menu confere novas mensagens a cada 20 s (para o aviso)
+    const t = setInterval(atualizarChat, screen === "resenha" ? 5000 : 20000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, currentUser && currentUser.id]);
+
+  // lembra, por pessoa e por aparelho, até onde já leu a Resenha
+  useEffect(() => {
+    if (!currentUser) { setChatLidoTs(""); return; }
+    let salvo = lerLocal(`resenha_lido_${currentUser.id}`);
+    if (!salvo) { salvo = new Date().toISOString(); gravarLocal(`resenha_lido_${currentUser.id}`, salvo); }
+    setChatLidoTs(salvo);
+    carregarConfigResenha();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser && currentUser.id]);
+
+  useEffect(() => {
+    if (screen !== "resenha" || !currentUser || chatMsgs.length === 0) return;
+    const ultimo = chatMsgs[chatMsgs.length - 1].ts;
+    if (ultimo > chatLidoTs) { setChatLidoTs(ultimo); gravarLocal(`resenha_lido_${currentUser.id}`, ultimo); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatMsgs, screen]);
+
+  useEffect(() => {
+    if (screen === "resenha" && chatFimRef.current) chatFimRef.current.scrollIntoView({ block: "end" });
+  }, [chatMsgs.length, screen]);
 
   // mantém "Aprovar Participantes" e o contador do menu em dia (Admin / Comissão)
   useEffect(() => {
@@ -1776,6 +1831,89 @@ export default function PalpitaoApp() {
     const [comps, parts] = await Promise.all([carregarCompeticoes(), carregarParticipantes()]);
     if (comps) { competicoesRef.current = comps; setCompeticoes(comps); }
     if (parts) { bancoRef.current = parts; setUsers(parts); }
+  }
+
+  // ---------- RESENHA DO BOLÃO (bate-papo da competição) ----------
+  async function carregarChat() {
+    try {
+      const res = await storageGet(CHAVE_CHAT);
+      return res && res.value ? JSON.parse(res.value) : [];
+    } catch { return null; }
+  }
+
+  async function carregarConfigResenha() {
+    try {
+      const res = await storageGet(CHAVE_RESENHA_CONFIG);
+      const cfg = res && res.value ? JSON.parse(res.value) : {};
+      setResenhaEscudo(cfg.escudo || null);
+    } catch { /* mantém o escudo atual */ }
+  }
+
+  async function handleEscolherEscudoResenha(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file || !currentUser || !currentUser.is_admin) return;
+    try {
+      const dataUrl = await redimensionarImagem(file, 160);
+      await storageSet(CHAVE_RESENHA_CONFIG, JSON.stringify({ escudo: dataUrl }));
+      setResenhaEscudo(dataUrl);
+    } catch (err) {
+      setChatErro(err.message);
+    }
+  }
+
+  async function handleRemoverEscudoResenha() {
+    if (!currentUser || !currentUser.is_admin) return;
+    await storageSet(CHAVE_RESENHA_CONFIG, JSON.stringify({ escudo: null }));
+    setResenhaEscudo(null);
+  }
+
+  function abrirResenha() {
+    setChatErro("");
+    setScreen("resenha");
+  }
+
+  async function atualizarChat() {
+    const lista = await carregarChat();
+    if (lista) setChatMsgs(lista);
+  }
+
+  async function handleEnviarMensagem(e) {
+    e.preventDefault();
+    const texto = chatTexto.trim();
+    if (!texto || chatEnviando || !compAtivaRef.current) return;
+    setChatErro("");
+    setChatEnviando(true);
+    try {
+      const atual = (await carregarChat()) ?? chatMsgs; // relê antes de gravar, pra não perder mensagem de outro participante
+      const nova = {
+        id: crypto.randomUUID(), autorId: currentUser.id, autor: currentUser.nome,
+        texto: texto.slice(0, CHAT_MAX_CARACTERES), ts: new Date().toISOString(),
+      };
+      const lista = [...atual, nova].slice(-CHAT_MAX_MENSAGENS);
+      await storageSet(CHAVE_CHAT, JSON.stringify(lista));
+      setChatMsgs(lista);
+      setChatTexto("");
+    } catch (err) {
+      setChatErro("Não foi possível enviar: " + err.message);
+    } finally {
+      setChatEnviando(false);
+    }
+  }
+
+  async function handleExcluirMensagem(msgId) {
+    setChatErro("");
+    try {
+      const atual = (await carregarChat()) ?? chatMsgs;
+      const alvo = atual.find((m) => m.id === msgId);
+      if (!alvo) return;
+      if (!currentUser.is_admin && alvo.autorId !== currentUser.id) return; // participante só apaga as próprias
+      const lista = atual.filter((m) => m.id !== msgId);
+      await storageSet(CHAVE_CHAT, JSON.stringify(lista));
+      setChatMsgs(lista);
+    } catch (err) {
+      setChatErro("Não foi possível apagar: " + err.message);
+    }
   }
 
   async function handleSolicitarEntrada(id) {
@@ -2443,6 +2581,11 @@ export default function PalpitaoApp() {
   const ehDono = !!(currentUser && idDoDono(users) === currentUser.id); // Administrador (dono)
   const idDono = idDoDono(users);
   const papelRotulo = !currentUser ? "" : currentUser.is_admin ? (ehDono ? "Administrador" : "Membro da Comissão") : "Jogador";
+  const chatNaoLidas = currentUser && chatLidoTs
+    ? chatMsgs.filter((m) => m.autorId !== currentUser.id && m.ts > chatLidoTs).length : 0;
+  const iconeResenha = (tam) => (resenhaEscudo
+    ? <img src={resenhaEscudo} alt="" style={{ width: tam, height: tam, objectFit: "contain" }} />
+    : <MessageCircle size={tam} />);
   const compFinalizada = !!(compAtiva && compAtiva.finalizada);
   // nome da rodada: fase extra usa o título dado pelo Admin (Semifinal, Final...), rodada normal usa o número
   const faseDe = (j) => {
@@ -2702,6 +2845,33 @@ export default function PalpitaoApp() {
         .tela-login .field { margin-bottom: 10px; }
         .tela-login .scoreboard { margin-top: 12px; }
         .senha-reset { flex-wrap: wrap; }
+        .chat-lista { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 240px; max-height: calc(100vh - 330px);
+          padding: 8px; border-radius: 12px; background: rgba(0,0,0,0.22); border: 1px solid rgba(247,245,239,0.10); }
+        .chat-linha { display: flex; align-items: flex-end; gap: 6px; max-width: 88%; align-self: flex-start; }
+        .chat-linha.minha { align-self: flex-end; flex-direction: row-reverse; }
+        .chat-avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: none; }
+        .chat-avatar-vazio { display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); color: var(--muted); }
+        .chat-balao { background: rgba(247,245,239,0.10); border-radius: 12px 12px 12px 3px; padding: 6px 10px; min-width: 70px; }
+        .chat-linha.minha .chat-balao { background: rgba(242,194,48,0.22); border-radius: 12px 12px 3px 12px; }
+        .chat-autor { font-size: 11px; font-weight: 800; color: #F2C230; margin-bottom: 2px; }
+        .chat-texto { font-size: 13.5px; color: var(--chalk); white-space: pre-wrap; overflow-wrap: anywhere; }
+        .chat-meta { display: flex; justify-content: flex-end; align-items: center; gap: 6px; font-size: 9.5px; color: var(--muted); margin-top: 2px; }
+        .chat-apagar { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 0; display: inline-flex; }
+        .chat-form { display: flex; gap: 8px; margin-top: 10px; }
+        .chat-form input { flex: 1; min-width: 0; background: rgba(255,255,255,0.07); border: 1px solid rgba(247,245,239,0.25);
+          color: var(--chalk); border-radius: 10px; padding: 11px 12px; font-size: 14px; }
+        .chat-enviar { background: #F2C230; color: #1a1a1a; border: none; border-radius: 10px; width: 46px; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; }
+        .chat-enviar:disabled { opacity: 0.5; cursor: default; }
+        .badge-nova { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px;
+          margin-left: 6px; border-radius: 9px; background: #E14133; color: #fff; font-size: 10.5px; font-weight: 800; vertical-align: middle; }
+        .btn-resenha { width: 100%; margin-top: 14px; display: flex; align-items: center; justify-content: center; gap: 10px;
+          background: rgba(242,194,48,0.14); border: 1px solid rgba(242,194,48,0.55); color: #F2C230; border-radius: 12px;
+          padding: 12px; font-size: 14px; font-weight: 800; letter-spacing: 0.8px; cursor: pointer; }
+        .resenha-topo { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
+        .resenha-escudo { width: 52px; height: 52px; object-fit: contain; flex: none; }
+        .resenha-escudo-vazio { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,0.08); color: var(--muted); }
+        .resenha-admin { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
         .tipo-jogo-seletor { display: flex; gap: 6px; margin: 4px 0 10px; }
         .tipo-jogo-seletor button { flex: 1; background: transparent; border: 1px solid rgba(247,245,239,0.25); color: var(--chalk);
           border-radius: 8px; padding: 8px 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -3078,6 +3248,58 @@ export default function PalpitaoApp() {
           </div>
         )}
 
+        {screen === "resenha" && currentUser && (
+          <div className="screen">
+            <button className="btn-voltar" onClick={() => setScreen(compAtivaId ? "menu" : "competicoesHome")}><ArrowLeft size={16} /> VOLTAR</button>
+            <div className="resenha-topo">
+              {resenhaEscudo ? <img className="resenha-escudo" src={resenhaEscudo} alt="Escudo" /> : <div className="resenha-escudo resenha-escudo-vazio"><Shield size={26} /></div>}
+              <h2 className="title" style={{ margin: 0 }}>RESENHA DO BOLÃO</h2>
+            </div>
+            {currentUser.is_admin && (
+              <div className="resenha-admin">
+                <label className="btn-liberar-mini comp-logo-btn">
+                  {resenhaEscudo ? "Trocar escudo" : "Cadastrar escudo (Atlético-GO)"}
+                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleEscolherEscudoResenha} />
+                </label>
+                {resenhaEscudo && <button type="button" className="btn-confirmar-nao" onClick={handleRemoverEscudoResenha}>Remover</button>}
+              </div>
+            )}
+            <p className="pontuacao-legenda">Bate-papo de todos os participantes do app. Respeite a galera e bom jogo!</p>
+            {chatErro && <div className="msg-error"><AlertCircle size={15} />{chatErro}</div>}
+
+            <div className="chat-lista">
+              {chatMsgs.length === 0 && <div className="log-empty">Nenhuma mensagem ainda. Seja o primeiro a puxar a resenha!</div>}
+              {chatMsgs.map((m) => {
+                const minha = m.autorId === currentUser.id;
+                const conta = users.find((u) => u.id === m.autorId);
+                const podeApagar = currentUser.is_admin || minha;
+                return (
+                  <div className={`chat-linha ${minha ? "minha" : ""}`} key={m.id}>
+                    {!minha && (conta && conta.foto_url ? <img className="chat-avatar" src={conta.foto_url} alt={m.autor} /> : <div className="chat-avatar chat-avatar-vazio"><UserIcon size={14} /></div>)}
+                    <div className="chat-balao">
+                      {!minha && <div className="chat-autor">{m.autor}</div>}
+                      <div className="chat-texto">{m.texto}</div>
+                      <div className="chat-meta">
+                        <span>{formatarHoraChat(m.ts)}</span>
+                        {podeApagar && <button type="button" className="chat-apagar" title="Apagar mensagem" onClick={() => handleExcluirMensagem(m.id)}><Trash2 size={11} /></button>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={chatFimRef} />
+            </div>
+
+            <form className="chat-form" onSubmit={handleEnviarMensagem}>
+              <input type="text" value={chatTexto} onChange={(e) => setChatTexto(e.target.value)} maxLength={CHAT_MAX_CARACTERES}
+                placeholder="Escreva sua mensagem…" autoComplete="off" />
+              <button type="submit" className="chat-enviar" disabled={chatEnviando || !chatTexto.trim()}>
+                {chatEnviando ? <Loader2 size={16} className="spin" /> : <ArrowRight size={18} />}
+              </button>
+            </form>
+          </div>
+        )}
+
         {screen === "trocarSenha" && currentUser && (
           <div className="screen tela-login">
             <div className="login-logo-wrap"><img className="login-logo" src={DRAGAO_IMG} alt="Bolão do Dragão" /></div>
@@ -3269,6 +3491,11 @@ export default function PalpitaoApp() {
                   <small>Placar final de cada rodada</small>
                 </button>
               )}
+              <button className="menu-tile" onClick={abrirResenha}>
+                <span className="menu-tile-icon">{iconeResenha(28)}</span>
+                <strong>Resenha do Bolão{chatNaoLidas > 0 && <span className="badge-nova">{chatNaoLidas > 99 ? "99+" : chatNaoLidas}</span>}</strong>
+                <small>Bate-papo de todos</small>
+              </button>
               {ehDono && (
                 <button className="menu-tile" onClick={() => setScreen("backup")}>
                   <span className="menu-tile-icon"><Database size={26} /></span>
@@ -3549,6 +3776,12 @@ export default function PalpitaoApp() {
                 );
               })}
             </div>
+
+            <button className="btn-resenha" onClick={abrirResenha}>
+              {iconeResenha(26)}
+              <span>RESENHA DO BOLÃO</span>
+              {chatNaoLidas > 0 && <span className="badge-nova">{chatNaoLidas > 99 ? "99+" : chatNaoLidas}</span>}
+            </button>
 
             {currentUser.is_admin && (
               <button className="btn-primary" style={{ marginTop: 14 }} onClick={() => { setCompErro(""); setCompMsg(""); setScreen("competicoesAdmin"); }}>
