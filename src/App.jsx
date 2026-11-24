@@ -2717,6 +2717,14 @@ export default function PalpitaoApp() {
         .comp-barra strong { font-size: 15px; color: #F2C230; }
         .comp-trocar { background: transparent; border: 1px solid rgba(242,194,48,0.6); color: #F2C230; border-radius: 8px;
           padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        .comp-barra { flex-direction: row; }
+        .comp-barra-centro { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+        .comp-barra-centro strong { font-size: 16px; }
+        .comp-trocar { align-self: flex-start; }
+        .comp-acoes { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; }
+        .comp-card-v { flex-direction: column !important; align-items: center !important; text-align: center; gap: 10px !important; padding: 14px 10px !important; }
+        .comp-card-v .n { align-items: center; font-size: 15px; font-weight: 700; }
+        .comp-card-v > button, .comp-card-v > .btn-promover, .comp-card-v > .tag-pendente-mini { margin: 0; }
         .comp-item .n { display: flex; flex-direction: column; gap: 2px; }
         .comp-sub { font-size: 10.5px; color: var(--muted); font-weight: 500; }
         .comp-renomear-input { flex: 1; min-width: 0; background: rgba(255,255,255,0.06); border: 1px solid rgba(247,245,239,0.25);
@@ -3170,9 +3178,10 @@ export default function PalpitaoApp() {
             </div>
 
             <div className="comp-barra">
-              <div>
+              <div className="comp-barra-centro">
                 <small>Competição</small>
-                <strong style={{ display: "flex", alignItems: "center", gap: 8 }}>{renderLogoComp(compAtiva, 30)}<span>{compNome}{compFinalizada ? " · FINALIZADA" : ""}</span></strong>
+                {compAtiva && compAtiva.logo ? renderLogoComp(compAtiva, 72) : <Trophy size={40} color="#F2C230" />}
+                <strong>{compNome}{compFinalizada ? " · FINALIZADA" : ""}</strong>
               </div>
               <button className="comp-trocar" onClick={irParaCompeticoes}>Trocar</button>
             </div>
@@ -3522,8 +3531,8 @@ export default function PalpitaoApp() {
                 const st = c.membros ? c.membros[currentUser.id] : undefined;
                 const podeEntrar = st === "aprovado" || currentUser.is_admin;
                 return (
-                  <div className="list-item comp-item" key={c.id}>
-                    {c.logo ? renderLogoComp(c, 30) : <Trophy size={16} color="#F2C230" />}
+                  <div className="list-item comp-item comp-card-v" key={c.id}>
+                    {c.logo ? renderLogoComp(c, 84) : <Trophy size={48} color="#F2C230" />}
                     <span className="n">{c.nome}{c.finalizada ? " (finalizada)" : ""}</span>
                     {podeEntrar ? (
                       <button className="btn-liberar-mini" onClick={() => entrarNaCompeticao(c.id)} disabled={compOcupadaId === c.id}>
@@ -3629,13 +3638,14 @@ export default function PalpitaoApp() {
                       );
                     }
                     return (
-                      <div className="list-item comp-item" key={c.id}>
-                        {c.logo ? renderLogoComp(c, 30) : <Trophy size={16} color="#F2C230" />}
+                      <div className="list-item comp-item comp-card-v" key={c.id}>
+                        {c.logo ? renderLogoComp(c, 84) : <Trophy size={48} color="#F2C230" />}
                         <span className="n">
                           {c.nome}
                           <small className="comp-sub">{qtd} participante(s){pend > 0 ? ` · ${pend} aguardando` : ""}</small>
                         </span>
-                        <button className="btn-liberar-mini" onClick={() => entrarNaCompeticao(c.id)} disabled={compOcupadaId === c.id}>
+                        <div className="comp-acoes">
+<button className="btn-liberar-mini" onClick={() => entrarNaCompeticao(c.id)} disabled={compOcupadaId === c.id}>
                           {compOcupadaId === c.id ? <Loader2 size={12} className="spin" /> : <>Entrar</>}
                         </button>
                         <button className="btn-promover" title="Editar nome e logo" onClick={() => { setCompRenomearId(c.id); setCompRenomearNome(c.nome); setCompRenomearLogo(undefined); }}>Editar</button>
@@ -3644,6 +3654,7 @@ export default function PalpitaoApp() {
                             <Trash2 size={14} />
                           </button>
                         )}
+</div>
                       </div>
                     );
                   })}
@@ -4232,7 +4243,7 @@ export default function PalpitaoApp() {
                 <div className="clx-conteudo">
                   <div className="clx-cabecalho">
                     <div className="clx-cabecalho-topo">
-                      <span className="clx-titulo-principal" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{renderLogoComp(compAtiva, 22)}{compNome}</span>
+                      <span className="clx-titulo-principal" style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 4, textAlign: "center" }}>{renderLogoComp(compAtiva, 44)}<span>{compNome}</span></span>
                       <span className="clx-titulo-sub">Participantes — Pontuação</span>
                     </div>
                     <div className="clx-colunas-header clx-grid-pontuacao">
@@ -4290,7 +4301,7 @@ export default function PalpitaoApp() {
                 <div className="clx-conteudo">
                   <div className="clx-cabecalho">
                     <div className="clx-cabecalho-topo">
-                      <span className="clx-titulo-principal" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{renderLogoComp(compAtiva, 22)}{compNome}</span>
+                      <span className="clx-titulo-principal" style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 4, textAlign: "center" }}>{renderLogoComp(compAtiva, 44)}<span>{compNome}</span></span>
                       <span className="clx-titulo-sub">{compFinalizada ? "★ CLASSIFICAÇÃO FINAL ★" : "Participantes"}</span>
                     </div>
                     <div className="clx-colunas-header clx-grid-classificacao">
@@ -4863,7 +4874,7 @@ export default function PalpitaoApp() {
                 <div className="clx-conteudo">
                   <div className="clx-cabecalho">
                     <div className="clx-cabecalho-topo">
-                      <span className="clx-titulo-principal" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{renderLogoComp(compAtiva, 22)}{compNome}</span>
+                      <span className="clx-titulo-principal" style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 4, textAlign: "center" }}>{renderLogoComp(compAtiva, 44)}<span>{compNome}</span></span>
                       <span className="clx-titulo-sub">{compFinalizada ? "★ CLASSIFICAÇÃO FINAL ★" : "Participantes"}</span>
                     </div>
                     <div className="clx-colunas-header clx-grid-classificacao">
@@ -4916,7 +4927,7 @@ export default function PalpitaoApp() {
                 <div className="clx-conteudo">
                   <div className="clx-cabecalho">
                     <div className="clx-cabecalho-topo">
-                      <span className="clx-titulo-principal" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>{renderLogoComp(compAtiva, 22)}{compNome}</span>
+                      <span className="clx-titulo-principal" style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 4, textAlign: "center" }}>{renderLogoComp(compAtiva, 44)}<span>{compNome}</span></span>
                       <span className="clx-titulo-sub">Participantes — Pontuação</span>
                     </div>
                     <div className="clx-colunas-header clx-grid-pontuacao">
