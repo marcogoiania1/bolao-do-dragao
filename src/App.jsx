@@ -225,6 +225,13 @@ export default function PalpitaoApp() {
   const [loadingReset, setLoadingReset] = useState(false);
   const [resetErro, setResetErro] = useState("");
   const [promoverMsg, setPromoverMsg] = useState("");
+  const [senhaResetId, setSenhaResetId] = useState(null);
+  const [senhaResetValor, setSenhaResetValor] = useState("");
+  const [senhaResetOcupado, setSenhaResetOcupado] = useState(false);
+  const [novaSenhaObrig, setNovaSenhaObrig] = useState("");
+  const [novaSenhaObrigConf, setNovaSenhaObrigConf] = useState("");
+  const [novaSenhaObrigErro, setNovaSenhaObrigErro] = useState("");
+  const [novaSenhaObrigOcupado, setNovaSenhaObrigOcupado] = useState(false);
   const [promoverErro, setPromoverErro] = useState("");
 
   const [celularEdit, setCelularEdit] = useState("");
@@ -248,6 +255,7 @@ export default function PalpitaoApp() {
   const [competicoes, setCompeticoes] = useState([]);
   const [compAtivaId, setCompAtivaId] = useState(null);
   const [compNomeForm, setCompNomeForm] = useState("");
+  const [abaAprovar, setAbaAprovar] = useState("participantes"); // "participantes" | "solicitacoes"
   const [compLogoForm, setCompLogoForm] = useState(null);
   const [compRenomearLogo, setCompRenomearLogo] = useState(undefined); // undefined = não mexer; null = remover; string = nova logo
   const [tipoJogoForm, setTipoJogoForm] = useState("rodada"); // "rodada" | "fase"
@@ -1188,6 +1196,41 @@ export default function PalpitaoApp() {
     return { status: 200, body: { ok: true } };
   }
 
+  // Admin / Membro da Comissão define uma senha provisória; no próximo acesso o participante é obrigado a criar uma nova
+  async function apiRedefinirSenha(tok, participanteId, senhaProvisoria) {
+    await delay(400);
+    const payload = lerToken(tok);
+    if (!payload || !payload.isAdmin) return { status: 403, body: { erro: "Só o Administrador ou Membro da Comissão pode redefinir senhas." } };
+    if (!senhaProvisoria || senhaProvisoria.length < 4) return { status: 400, body: { erro: "A senha provisória precisa ter pelo menos 4 caracteres." } };
+    bancoRef.current = (await carregarParticipantes()) ?? bancoRef.current;
+    const idx = bancoRef.current.findIndex((p) => p.id === participanteId);
+    if (idx === -1) return { status: 404, body: { erro: "Participante não encontrado." } };
+    if (participanteId === idDoDono(bancoRef.current) && payload.id !== participanteId) {
+      return { status: 403, body: { erro: "A senha do Administrador não pode ser redefinida pela Comissão." } };
+    }
+    bancoRef.current[idx] = { ...bancoRef.current[idx], senha_hash: await hashSenha(senhaProvisoria), trocar_senha: true };
+    await salvarParticipantes(bancoRef.current);
+    setUsers([...bancoRef.current]);
+    registrarLog("PUT", `/participantes/${participanteId}/senha`, 200, { participanteId });
+    return { status: 200, body: { ok: true } };
+  }
+
+  async function apiTrocarSenhaObrigatoria(tok, novaSenha) {
+    await delay(400);
+    const payload = lerToken(tok);
+    if (!payload) return { status: 401, body: { erro: "Token inválido ou ausente." } };
+    if (!novaSenha || novaSenha.length < 4) return { status: 400, body: { erro: "A nova senha precisa ter pelo menos 4 caracteres." } };
+    bancoRef.current = (await carregarParticipantes()) ?? bancoRef.current;
+    const idx = bancoRef.current.findIndex((p) => p.id === payload.id);
+    if (idx === -1) return { status: 404, body: { erro: "Participante não encontrado." } };
+    const { trocar_senha, ...resto } = bancoRef.current[idx];
+    bancoRef.current[idx] = { ...resto, senha_hash: await hashSenha(novaSenha) };
+    await salvarParticipantes(bancoRef.current);
+    setUsers([...bancoRef.current]);
+    const { senha_hash, ...semSenha } = bancoRef.current[idx];
+    return { status: 200, body: { participante: semSenha } };
+  }
+
   async function apiPromoverAdmin(tok, participanteId) {
     await delay(400);
     const payload = lerToken(tok);
@@ -1776,7 +1819,12 @@ export default function PalpitaoApp() {
       if (res.status === 200) {
         setCurrentUser(res.body.participante);
         setToken(res.body.token);
-        await irParaCompeticoes();
+        if (res.body.participante.trocar_senha) {
+          setNovaSenhaObrig(""); setNovaSenhaObrigConf(""); setNovaSenhaObrigErro("");
+          setScreen("trocarSenha");
+        } else {
+          await irParaCompeticoes();
+        }
       } else if (res.status === 401 || res.status === 403) {
         setLoginMsg(res.body.erro);
       } else {
@@ -2169,6 +2217,41 @@ export default function PalpitaoApp() {
     }
   }
 
+  async function handleRedefinirSenha(id, nomeParticipante) {
+    setPromoverMsg(""); setPromoverErro("");
+    setSenhaResetOcupado(true);
+    try {
+      const res = await apiRedefinirSenha(token, id, senhaResetValor);
+      if (res.status === 200) {
+        setPromoverMsg(`Senha provisória de ${nomeParticipante} definida. No próximo acesso ele(a) vai criar uma nova senha.`);
+        setSenhaResetId(null); setSenhaResetValor("");
+      } else {
+        setPromoverErro(res.body.erro);
+      }
+    } finally {
+      setSenhaResetOcupado(false);
+    }
+  }
+
+  async function handleTrocarSenhaObrigatoria(e) {
+    e.preventDefault();
+    setNovaSenhaObrigErro("");
+    if (novaSenhaObrig !== novaSenhaObrigConf) { setNovaSenhaObrigErro("As senhas não coincidem."); return; }
+    setNovaSenhaObrigOcupado(true);
+    try {
+      const res = await apiTrocarSenhaObrigatoria(token, novaSenhaObrig);
+      if (res.status === 200) {
+        setCurrentUser(res.body.participante);
+        setNovaSenhaObrig(""); setNovaSenhaObrigConf("");
+        await irParaCompeticoes();
+      } else {
+        setNovaSenhaObrigErro(res.body.erro);
+      }
+    } finally {
+      setNovaSenhaObrigOcupado(false);
+    }
+  }
+
   async function handlePromoverAdmin(id, nomeParticipante) {
     setPromoverMsg(""); setPromoverErro("");
     setPromovendoId(id);
@@ -2304,9 +2387,15 @@ export default function PalpitaoApp() {
   const papelRotulo = !currentUser ? "" : currentUser.is_admin ? (ehDono ? "Administrador" : "Membro da Comissão") : "Jogador";
   const compFinalizada = !!(compAtiva && compAtiva.finalizada);
   // nome da rodada: fase extra usa o título dado pelo Admin (Semifinal, Final...), rodada normal usa o número
-  const rotuloJogo = (j) => (j && j.fase ? j.fase : j ? `Rodada ${String(j.rodada).padStart(2, "0")}` : "—");
-  const rotuloJogoLongo = (j) => (j && j.fase ? j.fase : j ? `${String(j.rodada).padStart(2, "0")}ª Rodada` : "");
-  const rotuloJogoCurto = (j) => (j && j.fase ? j.fase : j ? `R${String(j.rodada).padStart(2, "0")}` : "");
+  const faseDe = (j) => {
+    if (!j) return "";
+    if (j.fase) return j.fase;
+    const orig = jogos.find((x) => (j.id && x.id === j.id) || x.rodada === j.rodada);
+    return orig && orig.fase ? orig.fase : "";
+  };
+  const rotuloJogo = (j) => (j ? (faseDe(j) || `Rodada ${String(j.rodada).padStart(2, "0")}`) : "—");
+  const rotuloJogoLongo = (j) => (j ? (faseDe(j) || `${String(j.rodada).padStart(2, "0")}ª Rodada`) : "");
+  const rotuloJogoCurto = (j) => (j ? (faseDe(j) || `R${String(j.rodada).padStart(2, "0")}`) : "");
   const rotuloRodadaNum = (n) => rotuloJogo(jogos.find((j) => j.rodada === n) || { rodada: n });
   const usersPendentes = users.filter((u) => statusMembro(u.id) === "pendente");
   const usersForaDaComp = users.filter((u) => !statusMembro(u.id));
@@ -2548,6 +2637,13 @@ export default function PalpitaoApp() {
         .comp-edicao { flex-wrap: wrap; }
         .tag-papel { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; color: #F2C230;
           border: 1px solid rgba(242,194,48,0.45); border-radius: 10px; padding: 2px 7px; white-space: nowrap; }
+        .tela-login { justify-content: flex-start; }
+        .login-logo-wrap { display: flex; justify-content: center; margin: 0 0 6px; }
+        .login-logo { width: 46%; max-width: 170px; aspect-ratio: 1 / 1; object-fit: contain; border-radius: 14px; }
+        .login-titulo { text-align: center; margin: 4px 0 12px; }
+        .tela-login .field { margin-bottom: 10px; }
+        .tela-login .scoreboard { margin-top: 12px; }
+        .senha-reset { flex-wrap: wrap; }
         .tipo-jogo-seletor { display: flex; gap: 6px; margin: 4px 0 10px; }
         .tipo-jogo-seletor button { flex: 1; background: transparent; border: 1px solid rgba(247,245,239,0.25); color: var(--chalk);
           border-radius: 8px; padding: 8px 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -2875,8 +2971,11 @@ export default function PalpitaoApp() {
         )}
 
         {screen === "login" && (
-          <div className="screen">
-            <h2 className="title">Entrar em campo</h2>
+          <div className="screen tela-login">
+            <div className="login-logo-wrap">
+              <img className="login-logo" src={DRAGAO_IMG} alt="Bolão do Dragão" />
+            </div>
+            <h2 className="title login-titulo">Entrar em campo</h2>
             {loginSucessoMsg && <div className="msg-sucesso"><Check size={15} />{loginSucessoMsg}</div>}
             {loginMsg && <div className="msg-error"><AlertCircle size={15} />{loginMsg}</div>}
             <div>
@@ -2910,6 +3009,32 @@ export default function PalpitaoApp() {
               <span className="scoreboard-label">Participantes cadastrados</span>
               <span className="scoreboard-count">{contadorTxt}/100</span>
             </div>
+          </div>
+        )}
+
+        {screen === "trocarSenha" && currentUser && (
+          <div className="screen tela-login">
+            <div className="login-logo-wrap"><img className="login-logo" src={DRAGAO_IMG} alt="Bolão do Dragão" /></div>
+            <h2 className="title login-titulo">Crie sua nova senha</h2>
+            <p className="pontuacao-legenda">Olá, <strong>{currentUser.nome}</strong>! O Administrador redefiniu o seu acesso. Cadastre agora uma nova senha — ela será a sua senha daqui para frente.</p>
+            {novaSenhaObrigErro && <div className="msg-error"><AlertCircle size={15} />{novaSenhaObrigErro}</div>}
+            <form onSubmit={handleTrocarSenhaObrigatoria}>
+              <div className="field">
+                <label><Lock size={12} /> Nova senha</label>
+                <div className="input-wrap"><Lock size={16} />
+                  <input type="password" value={novaSenhaObrig} onChange={(e) => setNovaSenhaObrig(e.target.value)} placeholder="Mínimo 4 caracteres" autoComplete="new-password" />
+                </div>
+              </div>
+              <div className="field">
+                <label><Lock size={12} /> Repita a nova senha</label>
+                <div className="input-wrap"><Lock size={16} />
+                  <input type="password" value={novaSenhaObrigConf} onChange={(e) => setNovaSenhaObrigConf(e.target.value)} placeholder="Repita a senha" autoComplete="new-password" />
+                </div>
+              </div>
+              <button className="btn-primary" type="submit" disabled={novaSenhaObrigOcupado}>
+                {novaSenhaObrigOcupado ? <><Loader2 size={16} className="spin" /> SALVANDO…</> : <><Save size={16} /> SALVAR NOVA SENHA</>}
+              </button>
+            </form>
           </div>
         )}
 
@@ -3162,7 +3287,17 @@ export default function PalpitaoApp() {
             </div>
             <div className="list">
               {[...usersComp].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((u) =>
-                confirmarExclusaoId === u.id ? (
+                senhaResetId === u.id ? (
+                  <div className="list-item senha-reset" key={u.id}>
+                    <span className="n">Senha provisória para <strong>{u.nome}</strong></span>
+                    <input className="comp-renomear-input" type="text" value={senhaResetValor} maxLength={30} placeholder="Ex.: 1234"
+                      onChange={(e) => setSenhaResetValor(e.target.value)} autoComplete="off" />
+                    <button className="btn-liberar-mini" onClick={() => handleRedefinirSenha(u.id, u.nome)} disabled={senhaResetOcupado}>
+                      {senhaResetOcupado ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Salvar</>}
+                    </button>
+                    <button className="btn-confirmar-nao" onClick={() => setSenhaResetId(null)}>Cancelar</button>
+                  </div>
+                ) : confirmarExclusaoId === u.id ? (
                   <div className="list-item confirmar-exclusao" key={u.id}>
                     <span className="n">Excluir a conta de <strong>{u.nome}</strong> (de todas as competições)?</span>
                     <button className="btn-confirmar-sim" onClick={() => handleExcluirParticipante(u.id)} disabled={excluindoId === u.id}>
@@ -3175,6 +3310,11 @@ export default function PalpitaoApp() {
                     {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
                     <span className="n">{u.nome}</span>
                     {u.is_admin && <span className="tag-papel"><Shield size={11} /> {u.id === idDono ? "Administrador" : "Comissão"}</span>}
+                    {currentUser.is_admin && u.id !== currentUser.id && (u.id !== idDono) && (
+                      <button className="btn-promover" title="Definir senha provisória" onClick={() => { setSenhaResetId(u.id); setSenhaResetValor(""); setPromoverErro(""); setPromoverMsg(""); }}>
+                        <Lock size={11} /> Senha
+                      </button>
+                    )}
                     {currentUser.is_admin && !u.is_admin && (
                       <button className="btn-promover" onClick={() => handlePromoverAdmin(u.id, u.nome)} disabled={promovendoId === u.id}>
                         {promovendoId === u.id ? <Loader2 size={12} className="spin" /> : <><Shield size={11} /> Promover a Comissão</>}
@@ -3207,6 +3347,16 @@ export default function PalpitaoApp() {
               <>
                 {excluirErro && <div className="msg-error"><AlertCircle size={15} />{excluirErro}</div>}
 
+                <div className="tipo-jogo-seletor">
+                  <button type="button" className={abaAprovar === "participantes" ? "ativo" : ""} onClick={() => setAbaAprovar("participantes")}>
+                    Participantes ({usersComp.length})
+                  </button>
+                  <button type="button" className={abaAprovar === "solicitacoes" ? "ativo" : ""} onClick={() => setAbaAprovar("solicitacoes")}>
+                    Solicitações / Adicionar ({usersPendentes.length + usersForaDaComp.length})
+                  </button>
+                </div>
+
+                {abaAprovar === "solicitacoes" && (<>
                 <div className="section-label">Aguardando aprovação ({usersPendentes.length})</div>
                 <div className="list">
                   {usersPendentes.length === 0 && (
@@ -3252,7 +3402,10 @@ export default function PalpitaoApp() {
                   ))}
                 </div>
 
-                <div className="section-label" style={{ marginTop: 18 }}>Participantes de {compNome} ({usersComp.length})</div>
+                </>)}
+
+                {abaAprovar === "participantes" && (<>
+                <div className="section-label" style={{ marginTop: 6 }}>Participantes de {compNome} ({usersComp.length})</div>
                 <div className="list">
                   {[...usersComp].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((u) => (
                     <div className="list-item" key={u.id}>
@@ -3267,6 +3420,7 @@ export default function PalpitaoApp() {
                     </div>
                   ))}
                 </div>
+                </>)}
               </>
             )}
           </div>
@@ -3721,7 +3875,7 @@ export default function PalpitaoApp() {
                 <div className="input-wrap select-wrap">
                   <select value={participanteAlvoId} onChange={(e) => setParticipanteAlvoId(e.target.value)}>
                     <option value="">Eu mesmo (Administrador)</option>
-                    {usersComp.filter((u) => u.id !== currentUser.id).map((u) => (
+                    {[...usersComp].filter((u) => u.id !== currentUser.id).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((u) => (
                       <option key={u.id} value={u.id}>{u.nome}</option>
                     ))}
                   </select>
