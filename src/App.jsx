@@ -1396,6 +1396,17 @@ export default function PalpitaoApp() {
     return { status: 200, body: { participante: semSenha } };
   }
 
+  // mantém "Aprovar Participantes" e o contador do menu em dia (Admin / Comissão)
+  useEffect(() => {
+    if (!currentUser || !currentUser.is_admin) return;
+    if (screen !== "aprovarParticipantes" && screen !== "menu") return;
+    atualizarListasAprovacao();
+    if (screen !== "aprovarParticipantes") return;
+    const t = setInterval(atualizarListasAprovacao, 15000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, currentUser && currentUser.id]);
+
   useEffect(() => {
     const t = setTimeout(() => setScreen("login"), 4500);
     return () => clearTimeout(t);
@@ -1725,6 +1736,13 @@ export default function PalpitaoApp() {
     } finally {
       setCompOcupadaId(null);
     }
+  }
+
+  // recarrega do banco quem pediu entrada / quem se cadastrou depois que o Admin abriu o app
+  async function atualizarListasAprovacao() {
+    const [comps, parts] = await Promise.all([carregarCompeticoes(), carregarParticipantes()]);
+    if (comps) { competicoesRef.current = comps; setCompeticoes(comps); }
+    if (parts) { bancoRef.current = parts; setUsers(parts); }
   }
 
   async function handleSolicitarEntrada(id) {
@@ -3351,12 +3369,19 @@ export default function PalpitaoApp() {
                   <button type="button" className={abaAprovar === "participantes" ? "ativo" : ""} onClick={() => setAbaAprovar("participantes")}>
                     Participantes ({usersComp.length})
                   </button>
-                  <button type="button" className={abaAprovar === "solicitacoes" ? "ativo" : ""} onClick={() => setAbaAprovar("solicitacoes")}>
-                    Solicitações / Adicionar ({usersPendentes.length + usersForaDaComp.length})
+                  <button type="button" className={abaAprovar === "aguardando" ? "ativo" : ""} onClick={() => setAbaAprovar("aguardando")}>
+                    Aguardando ({usersPendentes.length})
+                  </button>
+                  <button type="button" className={abaAprovar === "adicionar" ? "ativo" : ""} onClick={() => setAbaAprovar("adicionar")}>
+                    Adicionar ({usersForaDaComp.length})
                   </button>
                 </div>
 
-                {abaAprovar === "solicitacoes" && (<>
+                <button type="button" className="btn-confirmar-nao" style={{ marginBottom: 10 }} onClick={atualizarListasAprovacao}>
+                  ↻ Atualizar lista
+                </button>
+
+                {abaAprovar === "aguardando" && (<>
                 <div className="section-label">Aguardando aprovação ({usersPendentes.length})</div>
                 <div className="list">
                   {usersPendentes.length === 0 && (
@@ -3385,8 +3410,10 @@ export default function PalpitaoApp() {
                     )
                   )}
                 </div>
+                </>)}
 
-                <div className="section-label" style={{ marginTop: 18 }}>Adicionar quem já tem cadastro ({usersForaDaComp.length})</div>
+                {abaAprovar === "adicionar" && (<>
+                <div className="section-label">Adicionar quem já tem cadastro ({usersForaDaComp.length})</div>
                 <div className="list">
                   {usersForaDaComp.length === 0 && (
                     <div className="log-empty">Todos os cadastrados já estão nesta competição ou aguardando.</div>
