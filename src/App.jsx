@@ -60,7 +60,7 @@ const ICONES3D_CORES = {
   grupo: ["#5BC0FF", "#1769D1"], aprovar: ["#6EE7A0", "#16994F"], times: ["#FF7A7A", "#B3141B"], jogos: ["#FFD36B", "#E08A00"],
   palpites: ["#7DE3FF", "#1C8FC9"], pontuacao: ["#FFE27A", "#E0A100"], classificacao: ["#B39DFF", "#5B3FD1"],
   desempenho: ["#6EE7C8", "#0E9C84"], hall: ["#FFB86B", "#E0610A"], perfil: ["#9AA9FF", "#3C4FD6"], comps: ["#FFD36B", "#C27A00"],
-  liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
+  finalizar: ["#8E9AAF", "#2F3744"], liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
 };
 const ESTRELA_PTS = "32,25 33.65,29.74 38.66,29.84 34.66,32.87 36.11,37.66 32,34.8 27.89,37.66 29.34,32.87 25.34,29.84 30.35,29.74";
 function Icone3D({ tipo, size = 58, img }) {
@@ -138,6 +138,14 @@ function Icone3D({ tipo, size = 58, img }) {
           <path d="M21 11h22v16c0 8-5 13.500-11 13.500S21 35 21 27z" fill="url(#gg)" />
           <rect x="28.500" y="40" width="7" height="8" fill="#D9930A" /><rect x="21" y="48" width="22" height="6" rx="2.500" fill="#B87800" />
           <path d="M26 15v12c0 4 1.500 6 3 7" stroke="#fff" strokeWidth="2.600" opacity=".55" fill="none" strokeLinecap="round" />
+        </>);
+      case "finalizar":
+        return (<>
+          <rect x="16" y="11" width="4" height="43" rx="2" fill="#E9EDF3" />
+          <rect x="21" y="14" width="30" height="22" fill="#fff" />
+          {[0, 1, 2, 3, 4].flatMap((i) => [0, 1, 2].map((j2) => ((i + j2) % 2 === 0
+            ? <rect key={`${i}-${j2}`} x={21 + i * 6} y={14 + j2 * 7.330} width="6" height="7.330" fill="#1b2433" /> : null)))}
+          <rect x="21" y="14" width="30" height="22" fill="none" stroke="#1b2433" strokeWidth="1" />
         </>);
       case "liberar":
         return (<>
@@ -407,6 +415,7 @@ export default function PalpitaoApp() {
   const [resenhaEscudoCustom, setResenhaEscudo] = useState(null);
   const [confirmarRemoverMembroId, setConfirmarRemoverMembroId] = useState(null);
   const [verTodosDesempenho, setVerTodosDesempenho] = useState(false);
+  const [zoomDesempenho, setZoomDesempenho] = useState(1);
   const [abaAprovar, setAbaAprovar] = useState("participantes"); // "participantes" | "solicitacoes"
   const [compLogoForm, setCompLogoForm] = useState(null);
   const [compRenomearLogo, setCompRenomearLogo] = useState(undefined); // undefined = não mexer; null = remover; string = nova logo
@@ -2785,11 +2794,13 @@ export default function PalpitaoApp() {
         .splash { align-items: center; justify-content: flex-start; text-align: center; cursor: pointer; padding: 18px 20px 0; flex-direction: column; }
         .splash-titulo { font-family: 'Bebas Neue', sans-serif; font-size: 34px; letter-spacing: 2px; color: var(--floodlight); margin: 0 0 12px;
           text-shadow: 0 0 20px rgba(242,194,48,0.4); line-height: 1.05; }
-        .splash-img-wrap { flex: 1; width: 100%; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .splash-img-wrap { flex: 1 1 0; width: 100%; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
         .splash-img { width: 100%; height: 100%; object-fit: contain; }
         .splash-versao { color: var(--chalk); font-size: 15px; font-weight: 700; letter-spacing: 0.5px; margin: 10px 0 2px; }
         .splash-temporada { color: #FFFFFF; font-size: 30px; font-weight: 700; letter-spacing: 1px; margin: 8px 0 4px; }
-        .splash-escudo { height: 84px; width: auto; object-fit: contain; margin: 6px 0 0; }
+        .splash-centro { flex: 1 1 0; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 6px; }
+        .splash-escudo { height: 150px; width: auto; object-fit: contain; margin: 0 0 10px; }
+        .splash-frase { color: #FFFFFF; font-weight: 700; font-size: 11.5px; letter-spacing: 0.6px; line-height: 1.5; margin: 0; text-transform: uppercase; }
         .splash-autor { color: var(--muted); font-size: 12.5px; letter-spacing: 0.5px; margin: 0; }
         .splash-foot { position: relative; z-index: 2; padding: 14px 0 22px; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; }
         .bar { width: 140px; height: 4px; background: rgba(255,255,255,0.12); border-radius: 4px; margin-top: 18px; overflow: hidden; }
@@ -2884,7 +2895,7 @@ export default function PalpitaoApp() {
         .menu-tile:active { background: rgba(247,245,239,0.12); }
         .menu-tile-icon { width: 60px; height: 60px; border-radius: 16px; background: none; color: var(--floodlight);
           display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .menu-tile strong { font-size: 13.5px; line-height: 1.2; }
+        .menu-tile strong { font-size: 12.5px; line-height: 1.2; color: #FFFFFF; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; }
         .menu-tile small { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
         .menu-tile .badge-pendente { position: absolute; top: 10px; right: 10px; margin-right: 0; }
 
@@ -3056,6 +3067,16 @@ export default function PalpitaoApp() {
         .tela-cheia-fechar-escuro { background: rgba(247,245,239,0.1); border: none; color: var(--chalk);
           border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
         .tela-cheia-fechar-escuro:hover { background: rgba(247,245,239,0.18); }
+        .tela-cheia-overlay.dmax { padding: 4px; }
+        .tela-cheia-overlay.dmax .tela-cheia-modal-escuro { max-width: none; width: 100%; height: 100%; max-height: 100%; border-radius: 10px; }
+        .desempenho-navega { overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y pinch-zoom; }
+        .desempenho-zoom-barra { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(0,0,0,0.2); flex-shrink: 0; flex-wrap: wrap; }
+        .desempenho-zoom-barra button { background: rgba(247,245,239,0.1); border: 1px solid rgba(247,245,239,0.3); color: var(--chalk);
+          border-radius: 8px; min-width: 38px; height: 32px; font-size: 18px; font-weight: 800; cursor: pointer; padding: 0 10px; }
+        .desempenho-zoom-barra button:last-of-type { font-size: 12px; }
+        .desempenho-zoom-barra button:disabled { opacity: 0.4; cursor: default; }
+        .desempenho-zoom-barra span { color: var(--chalk); font-weight: 800; min-width: 46px; text-align: center; font-size: 13px; }
+        .desempenho-zoom-barra small { color: var(--muted); font-size: 10.5px; }
         .grafico-wrap-cheio { padding: 16px 8px 6px; }
         .legenda-grafico-cheia { padding: 4px 16px 18px; max-height: none; }
         .btn-secundario { display: inline-flex; align-items: center; gap: 6px; background: rgba(247,245,239,0.06);
@@ -3346,7 +3367,10 @@ export default function PalpitaoApp() {
             <div className="splash-img-wrap">
               <img className="splash-img" src={DRAGAO_IMG} alt="Bolão do Dragão" />
             </div>
-            <img className="splash-escudo" src={ESCUDO_ATLETICO} alt="Atlético Clube Goianiense" />
+            <div className="splash-centro">
+              <img className="splash-escudo" src={ESCUDO_ATLETICO} alt="Atlético Clube Goianiense" />
+              <p className="splash-frase">APP DE PALPITES DE PLACARES DOS JOGOS<br />DO ATLÉTICO CLUBE GOIANIENSE</p>
+            </div>
             <div className="splash-foot">
               <div className="bar"><div className="bar-fill" /></div>
               <div className="hint">toque para entrar em campo…</div>
@@ -3393,6 +3417,42 @@ export default function PalpitaoApp() {
               <span className="scoreboard-label">Participantes cadastrados</span>
               <span className="scoreboard-count">{contadorTxt}/100</span>
             </div>
+          </div>
+        )}
+
+        {screen === "finalizarCompeticao" && currentUser && (
+          <div className="screen">
+            <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
+            <h2 className="title">Finalizar Competição</h2>
+            {!currentUser.is_admin ? (
+              <div className="msg-error"><AlertCircle size={15} />Só o Administrador acessa essa tela.</div>
+            ) : (
+              <>
+                {jogoErro && <div className="msg-error"><AlertCircle size={15} />{jogoErro}</div>}
+                <div className="playoff-box">
+                  <strong><Trophy size={13} /> Encerramento da competição</strong>
+                  {compFinalizada ? (
+                    <>
+                      <p className="playoff-final">★ Competição FINALIZADA — a Classificação atual é a CLASSIFICAÇÃO FINAL. Novos jogos e palpites estão bloqueados.</p>
+                      <button type="button" className="btn-confirmar-nao" onClick={() => handleFinalizarCompeticao(false)}>Reabrir competição</button>
+                    </>
+                  ) : confirmarFinalizar ? (
+                    <>
+                      <p>Finalizar a competição agora? A Classificação atual vira a <strong>CLASSIFICAÇÃO FINAL</strong>.</p>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button type="button" className="btn-confirmar-sim" onClick={() => handleFinalizarCompeticao(true)}>Sim, finalizar</button>
+                        <button type="button" className="btn-confirmar-nao" onClick={() => setConfirmarFinalizar(false)}>Não</button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p>Se o time não se classificou ou saiu da disputa, finalize aqui: a Classificação atual fica como CLASSIFICAÇÃO FINAL.</p>
+                      <button type="button" className="btn-limpar-palpite" style={{ marginTop: 0 }} onClick={() => setConfirmarFinalizar(true)}>FINALIZAR COMPETIÇÃO</button>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -3637,6 +3697,13 @@ export default function PalpitaoApp() {
                   <span className="menu-tile-icon"><Icone3D tipo="resultado" /></span>
                   <strong>Postar Resultado</strong>
                   <small>Placar final de cada rodada</small>
+                </button>
+              )}
+              {currentUser.is_admin && (
+                <button className="menu-tile" onClick={() => { setJogoErro(""); setConfirmarFinalizar(false); setScreen("finalizarCompeticao"); }}>
+                  <span className="menu-tile-icon"><Icone3D tipo="finalizar" /></span>
+                  <strong>Finalizar Competição</strong>
+                  <small>{compFinalizada ? "Finalizada — reabrir" : "Encerrar e fixar a classificação"}</small>
                 </button>
               )}
               <button className="menu-tile" onClick={abrirResenha}>
@@ -3909,7 +3976,7 @@ export default function PalpitaoApp() {
             {compMsg && <div className="msg-sucesso"><Check size={15} />{compMsg}</div>}
             {compErro && <div className="msg-error"><AlertCircle size={15} />{compErro}</div>}
 
-            <div className="list">
+            {!currentUser.is_admin && (<div className="list">
               {competicoes.length === 0 && <div className="log-empty">Nenhuma competição cadastrada ainda.</div>}
               {competicoes.map((c) => {
                 const st = c.membros ? c.membros[currentUser.id] : undefined;
@@ -3932,17 +3999,17 @@ export default function PalpitaoApp() {
                   </div>
                 );
               })}
-            </div>
+            </div>)}
 
             <button className="btn-resenha" onClick={abrirResenha}>
-              {iconeResenha(26)}
+              <Icone3D tipo="resenha" size={44} img={resenhaEscudo} />
               <span>RESENHA DO BOLÃO</span>
               {chatNaoLidas > 0 && <span className="badge-nova">{chatNaoLidas > 99 ? "99+" : chatNaoLidas}</span>}
             </button>
 
             {currentUser.is_admin && (
               <button className="btn-resenha" onClick={() => { setCompErro(""); setCompMsg(""); setScreen("competicoesAdmin"); }}>
-                <Icone3D tipo="comps" size={34} />
+                <Icone3D tipo="comps" size={44} />
                 <span>COMPETIÇÕES</span>
               </button>
             )}
@@ -4129,28 +4196,6 @@ export default function PalpitaoApp() {
             ) : (
               <>
                 {jogoErro && <div className="msg-error"><AlertCircle size={15} />{jogoErro}</div>}
-                <div className="playoff-box">
-                  <strong><Trophy size={13} /> Encerramento da competição</strong>
-                  {compFinalizada ? (
-                    <>
-                      <p className="playoff-final">★ Competição FINALIZADA — a Classificação atual é a CLASSIFICAÇÃO FINAL. Novos jogos e palpites estão bloqueados.</p>
-                      <button type="button" className="btn-confirmar-nao" onClick={() => handleFinalizarCompeticao(false)}>Reabrir competição</button>
-                    </>
-                  ) : confirmarFinalizar ? (
-                    <>
-                      <p>Finalizar a competição agora? A Classificação atual vira a <strong>CLASSIFICAÇÃO FINAL</strong>.</p>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button type="button" className="btn-confirmar-sim" onClick={() => handleFinalizarCompeticao(true)}>Sim, finalizar</button>
-                        <button type="button" className="btn-confirmar-nao" onClick={() => setConfirmarFinalizar(false)}>Não</button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p>Se o time não se classificou ou saiu da disputa, finalize aqui: a Classificação atual fica como CLASSIFICAÇÃO FINAL.</p>
-                      <button type="button" className="btn-limpar-palpite" style={{ marginTop: 0 }} onClick={() => setConfirmarFinalizar(true)}>FINALIZAR COMPETIÇÃO</button>
-                    </>
-                  )}
-                </div>
                 {!compFinalizada && (
                   <div className="tipo-jogo-seletor">
                     <button type="button" className={tipoJogoForm === "rodada" ? "ativo" : ""} onClick={() => setTipoJogoForm("rodada")}>Rodada normal</button>
@@ -5372,15 +5417,23 @@ export default function PalpitaoApp() {
           return ponto;
         });
         return (
-          <div className="tela-cheia-overlay" onClick={fecharTelaCheia}>
+          <div className="tela-cheia-overlay dmax" onClick={fecharTelaCheia}>
             <div className="tela-cheia-modal-escuro" onClick={(e) => e.stopPropagation()}>
               <div className="tela-cheia-topo-escuro">
                 <strong>Desempenho — evolução da pontuação</strong>
                 <button className="tela-cheia-fechar-escuro" onClick={fecharTelaCheia}><X size={17} /></button>
               </div>
+              <div className="desempenho-zoom-barra">
+                <button type="button" onClick={() => setZoomDesempenho((z) => Math.max(1, +(z - 0.5).toFixed(1)))} disabled={zoomDesempenho <= 1}>−</button>
+                <span>{Math.round(zoomDesempenho * 100)}%</span>
+                <button type="button" onClick={() => setZoomDesempenho((z) => Math.min(6, +(z + 0.5).toFixed(1)))} disabled={zoomDesempenho >= 6}>+</button>
+                <button type="button" onClick={() => setZoomDesempenho(1)}>Ajustar</button>
+                <small>Arraste para navegar no gráfico</small>
+              </div>
               <div className="tela-cheia-scroll">
-                <div className="grafico-wrap-cheio">
-                  <ResponsiveContainer width="100%" height={420}>
+                <div className="grafico-wrap-cheio desempenho-navega">
+                  <div style={{ width: `${zoomDesempenho * 100}%` }}>
+                  <ResponsiveContainer width="100%" height={Math.round(Math.max(320, (typeof window !== "undefined" ? window.innerHeight : 700) - 230) * (1 + (zoomDesempenho - 1) * 0.6))}>
                     <LineChart data={dadosGrafico} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(247,245,239,0.12)" />
                       <XAxis dataKey="rodada" tick={{ fill: "#C99C9C", fontSize: 11 }} axisLine={{ stroke: "rgba(247,245,239,0.2)" }} />
@@ -5398,6 +5451,7 @@ export default function PalpitaoApp() {
                       })}
                     </LineChart>
                   </ResponsiveContainer>
+                  </div>
                 </div>
                 {seriesOrdenada.length > 0 && (
                   <>
