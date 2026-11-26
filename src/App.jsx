@@ -421,6 +421,7 @@ export default function PalpitaoApp() {
   const [competicoes, setCompeticoes] = useState([]);
   const [compAtivaId, setCompAtivaId] = useState(null);
   const [compNomeForm, setCompNomeForm] = useState("");
+  const [compPerguntaId, setCompPerguntaId] = useState(null);
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatTexto, setChatTexto] = useState("");
   const [chatEnviando, setChatEnviando] = useState(false);
@@ -2082,6 +2083,15 @@ export default function PalpitaoApp() {
     }
   }
 
+  // toque no botão da competição: entra se já participa; senão pergunta se quer pedir para participar
+  function handleClicarCompeticao(c) {
+    setCompErro(""); setCompMsg("");
+    const st = c.membros ? c.membros[currentUser.id] : undefined;
+    if (st === "aprovado" || currentUser.is_admin) { entrarNaCompeticao(c.id); return; }
+    if (st === "pendente") { setCompMsg(`Seu pedido para participar de ${c.nome} já foi enviado e está aguardando aprovação do Administrador.`); return; }
+    setCompPerguntaId(c.id);
+  }
+
   async function handleSolicitarEntrada(id) {
     setCompErro(""); setCompMsg("");
     setCompOcupadaId(id);
@@ -3238,6 +3248,14 @@ export default function PalpitaoApp() {
         .comp-barra-centro { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
         .comp-barra-centro strong { font-size: 16px; }
         .comp-trocar { align-self: flex-start; }
+        .comp-lista-botoes { display: flex; flex-direction: column; }
+        .comp-lista-botoes .comp-btn { margin-top: 0; margin-bottom: 10px; }
+        .comp-pergunta { background: linear-gradient(160deg, var(--pitch-dark), var(--pitch-mid)); border: 1px solid var(--pitch-line);
+          border-radius: 16px; padding: 22px 18px; width: 100%; max-width: 340px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .comp-pergunta h3 { margin: 4px 0 0; color: #F2C230; font-size: 18px; text-transform: uppercase; }
+        .comp-pergunta p { margin: 0; color: var(--chalk); font-size: 14px; line-height: 1.45; }
+        .comp-pergunta-botoes { display: flex; gap: 10px; margin-top: 8px; }
+        .comp-pergunta-botoes button { min-width: 96px; padding: 10px 14px; font-size: 14px; font-weight: 800; }
         .comp-bloco { margin-bottom: 10px; }
         .comp-bloco .comp-btn { margin-top: 0; }
         .comp-bloco .comp-acoes { margin-top: 6px; }
@@ -4275,30 +4293,40 @@ export default function PalpitaoApp() {
             {compMsg && <div className="msg-sucesso"><Check size={15} />{compMsg}</div>}
             {compErro && <div className="msg-error"><AlertCircle size={15} />{compErro}</div>}
 
-            {!currentUser.is_admin && (<div className="list">
+            {!currentUser.is_admin && (<div className="comp-lista-botoes">
               {competicoes.length === 0 && <div className="log-empty">Nenhuma competição cadastrada ainda.</div>}
               {competicoes.map((c) => {
                 const st = c.membros ? c.membros[currentUser.id] : undefined;
-                const podeEntrar = st === "aprovado" || currentUser.is_admin;
+                const rotuloSt = st === "aprovado" ? "Você participa — toque para entrar" : st === "pendente" ? "Pedido aguardando aprovação" : "Toque para pedir participação";
                 return (
-                  <div className="list-item comp-item comp-card-v" key={c.id}>
-                    {c.logo ? renderLogoComp(c, 84) : <Trophy size={48} color="#F2C230" />}
-                    <span className="n">{c.nome}{c.finalizada ? " (finalizada)" : ""}</span>
-                    {podeEntrar ? (
-                      <button className="btn-liberar-mini" onClick={() => entrarNaCompeticao(c.id)} disabled={compOcupadaId === c.id}>
-                        {compOcupadaId === c.id ? <Loader2 size={12} className="spin" /> : <>Entrar <ChevronRight size={12} /></>}
-                      </button>
-                    ) : st === "pendente" ? (
-                      <span className="tag-pendente-mini">Aguardando aprovação</span>
-                    ) : (
-                      <button className="btn-liberar-mini" onClick={() => handleSolicitarEntrada(c.id)} disabled={compOcupadaId === c.id}>
-                        {compOcupadaId === c.id ? <Loader2 size={12} className="spin" /> : <>Quero participar</>}
-                      </button>
-                    )}
-                  </div>
+                  <button className="btn-resenha comp-btn" key={c.id} onClick={() => handleClicarCompeticao(c)} disabled={compOcupadaId === c.id}>
+                    {compOcupadaId === c.id ? <Loader2 size={26} className="spin" /> : (c.logo ? renderLogoComp(c, 44) : <Icone3D tipo="comps" size={44} />)}
+                    <span className="comp-btn-nome">
+                      {c.nome}{c.finalizada ? " (finalizada)" : ""}
+                      <small className="comp-sub">{rotuloSt}</small>
+                    </span>
+                  </button>
                 );
               })}
             </div>)}
+
+            {compPerguntaId && (() => {
+              const cp = competicoes.find((x) => x.id === compPerguntaId);
+              if (!cp) return null;
+              return (
+                <div className="tela-cheia-overlay" onClick={() => setCompPerguntaId(null)}>
+                  <div className="comp-pergunta" onClick={(e) => e.stopPropagation()}>
+                    {cp.logo ? renderLogoComp(cp, 64) : <Icone3D tipo="comps" size={64} />}
+                    <h3>{cp.nome}</h3>
+                    <p>Você ainda não participa desta competição.<br />Quer pedir para participar?</p>
+                    <div className="comp-pergunta-botoes">
+                      <button className="btn-confirmar-sim" onClick={() => { setCompPerguntaId(null); handleSolicitarEntrada(cp.id); }}>SIM</button>
+                      <button className="btn-confirmar-nao" onClick={() => setCompPerguntaId(null)}>NÃO</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {currentUser.is_admin && (
               <button className="btn-resenha" onClick={() => { setCompErro(""); setCompMsg(""); setScreen("competicoesAdmin"); }}>
