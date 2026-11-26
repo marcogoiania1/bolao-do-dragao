@@ -5,7 +5,7 @@ import {
   ArrowRight, AlertCircle, Check, X, Loader2, Calendar,
   Trash2, ArrowLeft, ClipboardList, Hash, Users, Target, ChevronRight, ChevronLeft,
   Settings, ListChecks, Clock, Save, Crown, TrendingUp,
-  Unlock, Database, MessageCircle, Copy, ExternalLink, Eye, EyeOff,
+  Unlock, Database, MessageCircle, Copy, ExternalLink, Eye, EyeOff, Download,
 } from "lucide-react";
 // Armazenamento externo (Firebase Firestore) — substitui o antigo window.storage do Claude.
 // Ver src/firebase.js para a configuração e as funções storageGet/storageSet.
@@ -60,7 +60,7 @@ const ICONES3D_CORES = {
   grupo: ["#5BC0FF", "#1769D1"], aprovar: ["#6EE7A0", "#16994F"], times: ["#FF7A7A", "#B3141B"], jogos: ["#FFD36B", "#E08A00"],
   palpites: ["#7DE3FF", "#1C8FC9"], pontuacao: ["#FFE27A", "#E0A100"], classificacao: ["#B39DFF", "#5B3FD1"],
   desempenho: ["#6EE7C8", "#0E9C84"], hall: ["#FFB86B", "#E0610A"], perfil: ["#9AA9FF", "#3C4FD6"], comps: ["#FFD36B", "#C27A00"],
-  finalizar: ["#8E9AAF", "#2F3744"], liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
+  finalizar: ["#8E9AAF", "#2F3744"], campeao: ["#FFD36B", "#D9760A"], pdf: ["#FF6B6B", "#A81220"], liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
 };
 const ESTRELA_PTS = "32,25 33.65,29.74 38.66,29.84 34.66,32.87 36.11,37.66 32,34.8 27.89,37.66 29.34,32.87 25.34,29.84 30.35,29.74";
 function Icone3D({ tipo, size = 58, img }) {
@@ -146,6 +146,21 @@ function Icone3D({ tipo, size = 58, img }) {
           {[0, 1, 2, 3, 4].flatMap((i) => [0, 1, 2].map((j2) => ((i + j2) % 2 === 0
             ? <rect key={`${i}-${j2}`} x={21 + i * 6} y={14 + j2 * 7.330} width="6" height="7.330" fill="#1b2433" /> : null)))}
           <rect x="21" y="14" width="30" height="22" fill="none" stroke="#1b2433" strokeWidth="1" />
+        </>);
+      case "campeao":
+        return (<>
+          <polygon points="22,38 30,38 26,56 18,52" fill="#2D7BFF" /><polygon points="42,38 34,38 38,56 46,52" fill="#E5322D" />
+          <circle cx="32" cy="27" r="17" fill="url(#gg)" stroke="#B87800" strokeWidth="2" />
+          <circle cx="32" cy="27" r="12" fill="none" stroke="#fff" strokeOpacity=".55" strokeWidth="1.500" />
+          <text x="32" y="34" textAnchor="middle" fontSize="20" fontWeight="800" fill="#7a5200">1</text>
+        </>);
+      case "pdf":
+        return (<>
+          <path d="M16 8h22l11 11v37H16z" fill="url(#wg)" />
+          <path d="M38 8v11h11z" fill="#B9C4D4" />
+          <rect x="16" y="33" width="33" height="13" fill="#E5322D" />
+          <text x="32.500" y="43.500" textAnchor="middle" fontSize="11" fontWeight="800" fill="#fff">PDF</text>
+          <rect x="21" y="22" width="17" height="2.500" rx="1" fill="#9AA8BC" /><rect x="21" y="27" width="22" height="2.500" rx="1" fill="#9AA8BC" />
         </>);
       case "liberar":
         return (<>
@@ -416,6 +431,12 @@ export default function PalpitaoApp() {
   const [confirmarRemoverMembroId, setConfirmarRemoverMembroId] = useState(null);
   const [verTodosDesempenho, setVerTodosDesempenho] = useState(false);
   const [zoomDesempenho, setZoomDesempenho] = useState(1);
+  const [resFinal, setResFinal] = useState({ linhas: [], series: [], jogos: 0 });
+  const [loadingResFinal, setLoadingResFinal] = useState(false);
+  const [pdfOpcoes, setPdfOpcoes] = useState({ classificacao: true, jogos: true, palpites: true });
+  const [pdfOcupado, setPdfOcupado] = useState(false);
+  const [pdfMsg, setPdfMsg] = useState("");
+  const [pdfErro, setPdfErro] = useState("");
   const [abaAprovar, setAbaAprovar] = useState("participantes"); // "participantes" | "solicitacoes"
   const [compLogoForm, setCompLogoForm] = useState(null);
   const [compRenomearLogo, setCompRenomearLogo] = useState(undefined); // undefined = não mexer; null = remover; string = nova logo
@@ -1591,6 +1612,11 @@ export default function PalpitaoApp() {
     return { status: 200, body: { participante: semSenha } };
   }
 
+  useEffect(() => {
+    if (screen === "resultadoFinal" && token) carregarResultadoFinal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, token]);
+
   // Resenha do Bolão: carrega e atualiza a cada 5 s enquanto a tela está aberta
   useEffect(() => {
     if (!currentUser) return;
@@ -2124,11 +2150,153 @@ export default function PalpitaoApp() {
     }
   }
 
+  async function carregarResultadoFinal() {
+    setLoadingResFinal(true);
+    try {
+      const [pontRes, evoRes] = await Promise.all([apiListarPontuacao(token), apiListarEvolucao(token)]);
+      setResFinal({
+        linhas: pontRes.status === 200 ? pontRes.body.classificacao : [],
+        series: evoRes.status === 200 ? evoRes.body.series : [],
+        jogos: pontRes.status === 200 ? pontRes.body.jogosContabilizados : 0,
+      });
+    } finally {
+      setLoadingResFinal(false);
+    }
+  }
+
   async function handleFinalizarCompeticao(finalizar) {
     setJogoErro("");
     const res = await apiFinalizarCompeticao(token, finalizar);
-    if (res.status === 200) setConfirmarFinalizar(false);
-    else setJogoErro(res.body.erro);
+    if (res.status === 200) {
+      setConfirmarFinalizar(false);
+      if (finalizar) setScreen("resultadoFinal"); // ao encerrar, mostra a tela com campeão e vice
+    } else setJogoErro(res.body.erro);
+  }
+
+  // ---------- PDF da competição ----------
+  function carregarScriptExterno(url) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[src="${url}"]`)) { resolve(); return; }
+      const sc = document.createElement("script");
+      sc.src = url; sc.onload = () => resolve(); sc.onerror = () => reject(new Error("Não foi possível carregar o gerador de PDF. Verifique a internet e tente de novo."));
+      document.head.appendChild(sc);
+    });
+  }
+  const pdfTxt = (t) => String(t ?? "").replace(/[^\u0000-\u00FF\u2013\u2014\u2018\u2019\u201C\u201D\u2022]/g, "");
+  const pdfData = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || "") ? d.split("-").reverse().join("/") : (d || ""));
+
+  async function gerarPdfCompeticao() {
+    setPdfErro(""); setPdfMsg("");
+    if (!pdfOpcoes.classificacao && !pdfOpcoes.jogos && !pdfOpcoes.palpites) { setPdfErro("Marque pelo menos uma seção."); return; }
+    setPdfOcupado(true);
+    try {
+      await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+      await carregarScriptExterno("https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js");
+      const { jsPDF } = window.jspdf;
+      const [pontRes, visRes, jogosLidos] = await Promise.all([apiListarPontuacao(token), apiListarVisualizacaoPalpites(token), carregarJogos()]);
+      const classif = pontRes.status === 200 ? pontRes.body.classificacao : [];
+      const rodadas = visRes.status === 200 ? visRes.body.rodadas : [];
+      const listaJogos = [...(jogosLidos ?? jogosRef.current)].sort((a, b) => a.rodada - b.rodada);
+      const rotulo = (j) => pdfTxt(j.fase ? j.fase : `Rodada ${String(j.rodada).padStart(2, "0")}`);
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const largura = doc.internal.pageSize.getWidth();
+      const altura = doc.internal.pageSize.getHeight();
+      const agora = new Date();
+      const dataTxt = `${String(agora.getDate()).padStart(2, "0")}/${String(agora.getMonth() + 1).padStart(2, "0")}/${agora.getFullYear()} ${String(agora.getHours()).padStart(2, "0")}:${String(agora.getMinutes()).padStart(2, "0")}`;
+
+      // cabeçalho
+      try { doc.addImage(ESCUDO_ATLETICO, "PNG", 14, 10, 17, 23); } catch { /* sem imagem: segue */ }
+      let xTitulo = 36;
+      if (compAtiva && compAtiva.logo) { try { doc.addImage(compAtiva.logo, "PNG", largura - 34, 10, 20, 20); } catch { /* ignora */ } }
+      doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(150, 15, 20);
+      doc.text(pdfTxt(compNome).toUpperCase(), xTitulo, 20);
+      doc.setFontSize(10); doc.setTextColor(60, 60, 60); doc.setFont("helvetica", "normal");
+      doc.text("BOLÃO DO DRAGÃO - VERSÃO ON LINE", xTitulo, 26);
+      doc.text(`Gerado em ${dataTxt}`, xTitulo, 31);
+      let y = 40;
+
+      if (pdfOpcoes.classificacao) {
+        doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(0, 0, 0);
+        doc.text(compFinalizada ? "CLASSIFICAÇÃO FINAL" : `CLASSIFICAÇÃO (após ${pontRes.status === 200 ? pontRes.body.jogosContabilizados : 0} jogo(s))`, 14, y);
+        y += 3;
+        if (compFinalizada && classif.length >= 1) {
+          doc.setFontSize(10); doc.setFont("helvetica", "normal");
+          y += 6; doc.text(`CAMPEÃO: ${pdfTxt(classif[0].nome)} - ${classif[0].pontos} pts`, 14, y);
+          if (classif[1]) { y += 5; doc.text(`VICE: ${pdfTxt(classif[1].nome)} - ${classif[1].pontos} pts`, 14, y); }
+          y += 2;
+        }
+        doc.autoTable({
+          startY: y + 2,
+          head: [["#", "Participante", "Pts", "Crav", "X4", "X3", "X1", "X0", "WO"]],
+          body: classif.map((l, i) => [i + 1, pdfTxt(l.nome), l.pontos, l.cravadas, l.quatro, l.tres, l.um, l.zero, l.wo]),
+          styles: { fontSize: 9, cellPadding: 1.600 },
+          headStyles: { fillColor: [150, 15, 20] },
+          columnStyles: { 0: { halign: "center", cellWidth: 10 }, 2: { halign: "center", fontStyle: "bold" }, 3: { halign: "center" }, 4: { halign: "center" }, 5: { halign: "center" }, 6: { halign: "center" }, 7: { halign: "center" }, 8: { halign: "center" } },
+          didParseCell: (d) => {
+            if (d.section !== "body" || classif.length < 9) return;
+            if (d.row.index < 4) d.cell.styles.fillColor = [220, 245, 225];
+            else if (d.row.index >= classif.length - 4) d.cell.styles.fillColor = [250, 222, 220];
+          },
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      }
+
+      if (pdfOpcoes.jogos) {
+        if (y > altura - 50) { doc.addPage(); y = 18; }
+        doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(0, 0, 0);
+        doc.text("JOGOS E RESULTADOS", 14, y);
+        doc.autoTable({
+          startY: y + 3,
+          head: [["Rodada / Fase", "Data", "Hora", "Jogo", "Resultado"]],
+          body: listaJogos.map((j) => [
+            rotulo(j), pdfData(j.data), pdfTxt(j.hora), `${pdfTxt(j.mandante)} x ${pdfTxt(j.visitante)}`,
+            j.resultadoMandante !== null && j.resultadoMandante !== undefined ? `${j.resultadoMandante} x ${j.resultadoVisitante}` : "-",
+          ]),
+          styles: { fontSize: 9, cellPadding: 1.600 },
+          headStyles: { fillColor: [150, 15, 20] },
+          columnStyles: { 4: { halign: "center", fontStyle: "bold" } },
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      }
+
+      if (pdfOpcoes.palpites) {
+        for (const r of rodadas) {
+          if (y > altura - 45) { doc.addPage(); y = 18; }
+          const jr = listaJogos.find((j) => j.id === r.id) || r;
+          doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(150, 15, 20);
+          doc.text(`${rotulo(jr)}: ${pdfTxt(r.mandante)} ${r.resultadoMandante} x ${r.resultadoVisitante} ${pdfTxt(r.visitante)}`, 14, y);
+          doc.autoTable({
+            startY: y + 2,
+            head: [["Participante", "Palpite", "Pts", "Acumulado"]],
+            body: r.linhas.map((l) => [pdfTxt(l.nome), l.isWO ? "W.O." : `${l.placarMandante} x ${l.placarVisitante}`, l.pontos, l.acumulado]),
+            styles: { fontSize: 8.500, cellPadding: 1.300 },
+            headStyles: { fillColor: [90, 90, 90] },
+            columnStyles: { 1: { halign: "center" }, 2: { halign: "center", fontStyle: "bold" }, 3: { halign: "center" } },
+          });
+          y = doc.lastAutoTable.finalY + 8;
+        }
+        if (rodadas.length === 0) {
+          if (y > altura - 30) { doc.addPage(); y = 18; }
+          doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(80, 80, 80);
+          doc.text("Ainda não há rodadas com resultado para listar os palpites.", 14, y);
+        }
+      }
+
+      const total = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= total; i++) {
+        doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(120, 120, 120);
+        doc.text(`${pdfTxt(compNome)} - Bolão do Dragão`, 14, altura - 7);
+        doc.text(`Página ${i} de ${total}`, largura - 14, altura - 7, { align: "right" });
+      }
+      const slug = pdfTxt(compNome).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+      doc.save(`Bolao_do_Dragao_${slug || "competicao"}.pdf`);
+      setPdfMsg("PDF gerado! Procure o arquivo na pasta de downloads e envie para os participantes (por exemplo, pelo WhatsApp).");
+    } catch (err) {
+      setPdfErro(err.message || "Erro ao gerar o PDF.");
+    } finally {
+      setPdfOcupado(false);
+    }
   }
 
   async function handleRemoverMembro(id) {
@@ -3025,6 +3193,32 @@ export default function PalpitaoApp() {
         .resenha-escudo { width: 52px; height: 52px; object-fit: contain; flex: none; }
         .resenha-escudo-vazio { display: flex; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,0.08); color: var(--muted); }
         .resenha-admin { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+        .rf-destaque { border-radius: 16px; padding: 14px 12px; margin-bottom: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.18); }
+        .rf-campeao { background: linear-gradient(160deg, rgba(255,210,80,0.30), rgba(160,100,0,0.28)); border-color: #F2C230; box-shadow: 0 0 22px rgba(242,194,48,0.28); }
+        .rf-vice { background: linear-gradient(160deg, rgba(220,226,236,0.22), rgba(110,120,140,0.22)); border-color: #C9D2E0; }
+        .rf-destaque-topo { display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .rf-rotulo { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 2px; color: #FFFFFF; }
+        .rf-foto { width: 74px; height: 74px; border-radius: 50%; object-fit: cover; margin: 8px 0 2px; border: 3px solid #F2C230; }
+        .rf-nome { font-size: 19px; font-weight: 800; color: #fff; margin-top: 4px; }
+        .rf-pontos { font-size: 34px; font-weight: 800; color: #F2C230; line-height: 1.1; }
+        .rf-pontos small, .rf-linha-pontos small { font-size: 12px; font-weight: 700; color: var(--muted); }
+        .rf-chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 6px 0 2px; }
+        .rf-chip { font-size: 10px; font-weight: 800; border-radius: 6px; padding: 2px 6px; color: #000; }
+        .c-crav { background: #2ECC71; } .c-x4 { background: #FF8AD8; } .c-x3 { background: #FFE14D; } .c-x1 { background: #59B7FF; }
+        .c-x0 { background: #FF9A3D; } .c-wo { background: #E14133; color: #fff; }
+        .rf-spark { display: flex; justify-content: center; margin-top: 4px; }
+        .rf-linha { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: rgba(247,245,239,0.06); border: 1px solid rgba(247,245,239,0.12); margin-bottom: 6px; }
+        .rf-pos { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: #F2C230; min-width: 34px; text-align: center; }
+        .rf-meio { flex: 1; min-width: 0; }
+        .rf-meio .rf-chips { justify-content: flex-start; }
+        .rf-linha-nome { font-size: 14px; font-weight: 800; color: #fff; overflow-wrap: anywhere; }
+        .rf-direita { text-align: right; }
+        .rf-linha-pontos { font-size: 22px; font-weight: 800; color: #F2C230; line-height: 1.1; }
+        .pdf-opcoes { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; }
+        .pdf-opcoes label { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(247,245,239,0.06); border: 1px solid rgba(247,245,239,0.14); cursor: pointer; }
+        .pdf-opcoes input { margin-top: 3px; width: 18px; height: 18px; accent-color: #F2C230; }
+        .pdf-opcoes strong { display: block; font-size: 13.5px; color: #fff; }
+        .pdf-opcoes small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
         .tipo-jogo-seletor { display: flex; gap: 6px; margin: 4px 0 10px; }
         .tipo-jogo-seletor button { flex: 1; background: transparent; border: 1px solid rgba(247,245,239,0.25); color: var(--chalk);
           border-radius: 8px; padding: 8px 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
@@ -3420,6 +3614,95 @@ export default function PalpitaoApp() {
           </div>
         )}
 
+        {screen === "resultadoFinal" && currentUser && (() => {
+          const top = resFinal.linhas.slice(0, 10);
+          const serieDe = (id) => resFinal.series.find((x) => x.participanteId === id);
+          const spark = (id) => {
+            const v = (serieDe(id) || { valores: [] }).valores;
+            if (v.length < 2) return null;
+            const max = Math.max(...v, 1);
+            const pts = v.map((val, i) => `${(i / (v.length - 1)) * 76 + 2},${26 - (val / max) * 22}`).join(" ");
+            return <svg width="80" height="28" viewBox="0 0 80 28" aria-label="Evolução da pontuação"><polyline points={pts} fill="none" stroke="#F2C230" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" /></svg>;
+          };
+          const chips = (l) => (
+            <div className="rf-chips">
+              <span className="rf-chip c-crav">CRAV {l.cravadas}</span><span className="rf-chip c-x4">X4 {l.quatro}</span>
+              <span className="rf-chip c-x3">X3 {l.tres}</span><span className="rf-chip c-x1">X1 {l.um}</span>
+              <span className="rf-chip c-x0">X0 {l.zero}</span><span className="rf-chip c-wo">WO {l.wo}</span>
+            </div>
+          );
+          const destaque = (l, pos) => (
+            <div className={`rf-destaque ${pos === 1 ? "rf-campeao" : "rf-vice"}`}>
+              <div className="rf-destaque-topo">
+                <Icone3D tipo={pos === 1 ? "campeao" : "hall"} size={pos === 1 ? 64 : 52} />
+                <div className="rf-rotulo">{pos === 1 ? "CAMPEÃO" : "VICE-CAMPEÃO"}</div>
+              </div>
+              {l.foto_url && <img className="rf-foto" src={l.foto_url} alt={l.nome} />}
+              <div className="rf-nome">{l.nome}</div>
+              <div className="rf-pontos">{l.pontos}<small> pts</small></div>
+              {chips(l)}
+              <div className="rf-spark">{spark(l.id)}</div>
+            </div>
+          );
+          return (
+            <div className="screen">
+              <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
+              <h2 className="title">{compFinalizada ? "Resultado Final" : "Classificação (parcial)"}</h2>
+              <p className="pontuacao-legenda" style={{ marginTop: -8 }}>
+                <strong>{compNome}</strong>{compFinalizada ? " — competição finalizada." : " — a competição ainda não foi finalizada."}
+              </p>
+              {loadingResFinal && <div className="log-empty"><Loader2 size={14} className="spin" /> Calculando…</div>}
+              {!loadingResFinal && top.length === 0 && <div className="log-empty">Ainda não há participantes pontuando.</div>}
+              {top[0] && destaque(top[0], 1)}
+              {top[1] && destaque(top[1], 2)}
+              {top.length > 2 && <div className="section-label" style={{ marginTop: 14 }}>Do 3º ao {top.length}º colocado</div>}
+              <div className="list">
+                {top.slice(2).map((l, i) => (
+                  <div className="rf-linha" key={l.id}>
+                    <div className="rf-pos">{i + 3}º</div>
+                    <div className="rf-meio">
+                      <div className="rf-linha-nome">{l.nome}</div>
+                      {chips(l)}
+                    </div>
+                    <div className="rf-direita">
+                      <div className="rf-linha-pontos">{l.pontos}<small> pts</small></div>
+                      {spark(l.id)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="legenda-dica">Os números CRAV, X4, X3, X1, X0 e WO mostram quantos jogos cada um fez em cada faixa de pontuação. A linha dourada é a evolução da pontuação rodada a rodada.</p>
+            </div>
+          );
+        })()}
+
+        {screen === "exportarPdf" && currentUser && (
+          <div className="screen">
+            <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
+            <h2 className="title">Gerar PDF</h2>
+            <p className="pontuacao-legenda" style={{ marginTop: -8 }}>Cria um arquivo PDF com as informações de <strong>{compNome}</strong> (somente desta competição) para você enviar aos participantes.</p>
+            {!currentUser.is_admin ? (
+              <div className="msg-error"><AlertCircle size={15} />Só o Administrador acessa essa tela.</div>
+            ) : (
+              <>
+                {pdfMsg && <div className="msg-sucesso"><Check size={15} />{pdfMsg}</div>}
+                {pdfErro && <div className="msg-error"><AlertCircle size={15} />{pdfErro}</div>}
+                <div className="pdf-opcoes">
+                  <label><input type="checkbox" checked={pdfOpcoes.classificacao} onChange={(e) => setPdfOpcoes((o) => ({ ...o, classificacao: e.target.checked }))} />
+                    <span><strong>{compFinalizada ? "Classificação final" : "Classificação"}</strong><small>Pontos, cravadas e faixas de cada participante{compFinalizada ? ", com campeão e vice" : ""}</small></span></label>
+                  <label><input type="checkbox" checked={pdfOpcoes.jogos} onChange={(e) => setPdfOpcoes((o) => ({ ...o, jogos: e.target.checked }))} />
+                    <span><strong>Jogos e resultados</strong><small>Todas as rodadas e fases, com data, hora e placar</small></span></label>
+                  <label><input type="checkbox" checked={pdfOpcoes.palpites} onChange={(e) => setPdfOpcoes((o) => ({ ...o, palpites: e.target.checked }))} />
+                    <span><strong>Palpites de todos, rodada a rodada</strong><small>Palpite, pontos e acumulado de cada participante (pode ter várias páginas)</small></span></label>
+                </div>
+                <button className="btn-primary" onClick={gerarPdfCompeticao} disabled={pdfOcupado}>
+                  {pdfOcupado ? <><Loader2 size={16} className="spin" /> GERANDO PDF…</> : <><Download size={16} /> GERAR PDF</>}
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {screen === "finalizarCompeticao" && currentUser && (
           <div className="screen">
             <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
@@ -3699,6 +3982,20 @@ export default function PalpitaoApp() {
                   <small>Placar final de cada rodada</small>
                 </button>
               )}
+              {compFinalizada && (
+                <button className="menu-tile" onClick={() => setScreen("resultadoFinal")}>
+                  <span className="menu-tile-icon"><Icone3D tipo="campeao" /></span>
+                  <strong>Resultado Final</strong>
+                  <small>Campeão, vice e os 10 primeiros</small>
+                </button>
+              )}
+              {currentUser.is_admin && (
+                <button className="menu-tile" onClick={() => { setPdfErro(""); setPdfMsg(""); setScreen("exportarPdf"); }}>
+                  <span className="menu-tile-icon"><Icone3D tipo="pdf" /></span>
+                  <strong>Gerar PDF</strong>
+                  <small>Para enviar aos participantes</small>
+                </button>
+              )}
               {currentUser.is_admin && (
                 <button className="menu-tile" onClick={() => { setJogoErro(""); setConfirmarFinalizar(false); setScreen("finalizarCompeticao"); }}>
                   <span className="menu-tile-icon"><Icone3D tipo="finalizar" /></span>
@@ -3970,8 +4267,10 @@ export default function PalpitaoApp() {
               </div>
             </div>
 
-            <h2 className="title">Competições</h2>
-            <p className="pontuacao-legenda">Escolha o campeonato em que você quer entrar. Se ainda não participa, é só pedir — o Administrador libera.</p>
+            {!currentUser.is_admin && (<>
+              <h2 className="title">Competições</h2>
+              <p className="pontuacao-legenda">Escolha o campeonato em que você quer entrar. Se ainda não participa, é só pedir — o Administrador libera.</p>
+            </>)}
 
             {compMsg && <div className="msg-sucesso"><Check size={15} />{compMsg}</div>}
             {compErro && <div className="msg-error"><AlertCircle size={15} />{compErro}</div>}
@@ -4001,18 +4300,18 @@ export default function PalpitaoApp() {
               })}
             </div>)}
 
-            <button className="btn-resenha" onClick={abrirResenha}>
-              <Icone3D tipo="resenha" size={44} img={resenhaEscudo} />
-              <span>RESENHA DO BOLÃO</span>
-              {chatNaoLidas > 0 && <span className="badge-nova">{chatNaoLidas > 99 ? "99+" : chatNaoLidas}</span>}
-            </button>
-
             {currentUser.is_admin && (
               <button className="btn-resenha" onClick={() => { setCompErro(""); setCompMsg(""); setScreen("competicoesAdmin"); }}>
-                <Icone3D tipo="comps" size={44} />
+                <Icone3D tipo="comps" size={52} />
                 <span>COMPETIÇÕES</span>
               </button>
             )}
+
+            <button className="btn-resenha" onClick={abrirResenha}>
+              <Icone3D tipo="resenha" size={52} img={resenhaEscudo} />
+              <span>RESENHA DO BOLÃO</span>
+              {chatNaoLidas > 0 && <span className="badge-nova">{chatNaoLidas > 99 ? "99+" : chatNaoLidas}</span>}
+            </button>
             <button className="btn-logout" onClick={handleLogout}><LogOut size={15} /> Sair</button>
           </div>
         )}
