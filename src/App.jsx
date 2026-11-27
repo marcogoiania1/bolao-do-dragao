@@ -475,6 +475,11 @@ export default function PalpitaoApp() {
   const [compRenomearLogo, setCompRenomearLogo] = useState(undefined); // undefined = não mexer; null = remover; string = nova logo
   const [tipoJogoForm, setTipoJogoForm] = useState("rodada"); // "rodada" | "fase"
   const [faseTituloForm, setFaseTituloForm] = useState("");
+  const [nomeRodadaForm, setNomeRodadaForm] = useState(""); // nome opcional da rodada normal (1º Turno, 2º Turno...)
+  const [editJogoId, setEditJogoId] = useState(null);
+  const [editJogo, setEditJogo] = useState({ nome: "", data: "", hora: "", mandanteId: "", visitanteId: "" });
+  const [editJogoOcupado, setEditJogoOcupado] = useState(false);
+  const [editJogoErro, setEditJogoErro] = useState("");
   const [confirmarFinalizar, setConfirmarFinalizar] = useState(false);
   const [compErro, setCompErro] = useState("");
   const [compMsg, setCompMsg] = useState("");
@@ -759,7 +764,7 @@ export default function PalpitaoApp() {
     setRodadaTodos([]);
   }
 
-  async function apiCadastrarJogo(tok, { rodada, fase, mandante, visitante, mandanteClubeId, visitanteClubeId, data, hora }) {
+  async function apiCadastrarJogo(tok, { rodada, fase, nomeRodada, mandante, visitante, mandanteClubeId, visitanteClubeId, data, hora }) {
     await delay(450);
     const payload = lerToken(tok);
     if (!payload) {
@@ -809,6 +814,7 @@ export default function PalpitaoApp() {
     const jogo = {
       id: crypto.randomUUID(),
       rodada: numeroRodada,
+      nomeRodada: faseTitulo ? "" : (nomeRodada || "").trim().slice(0, 40), // nome opcional da rodada normal (1º Turno...)
       fase: faseTitulo, // vazio = rodada normal; preenchido = fase extra (Play-off, Quartas, Semifinal, Final...)
       mandante: mandante.trim(),
       visitante: visitante.trim(),
@@ -900,6 +906,29 @@ export default function PalpitaoApp() {
     const lista = [...jogosRef.current].sort((a, b) => a.rodada - b.rodada);
     registrarLog("GET", "/jogos", 200, { total: lista.length, vagas: MAX_JOGOS, jogos: lista });
     return { status: 200, body: { total: lista.length, jogos: lista } };
+  }
+
+  // Administrador e Membro da Comissão podem alterar nome, data, hora e times de um jogo já cadastrado
+  async function apiEditarJogo(tok, id, { nome, data, hora, mandanteClubeId, visitanteClubeId, mandante, visitante }) {
+    await delay(350);
+    const payload = lerToken(tok);
+    if (!payload || !payload.isAdmin) return { status: 403, body: { erro: "Só o Administrador ou a Comissão pode alterar jogos." } };
+    if (!data || !hora || !mandante || !visitante) return { status: 400, body: { erro: "Preencha data, hora e os dois times." } };
+    if (mandanteClubeId && mandanteClubeId === visitanteClubeId) return { status: 400, body: { erro: "Mandante e visitante não podem ser o mesmo time." } };
+    jogosRef.current = (await carregarJogos()) ?? jogosRef.current;
+    const alvo = jogosRef.current.find((j) => j.id === id);
+    if (!alvo) return { status: 404, body: { erro: "Jogo não encontrado." } };
+    const nomeLimpo = (nome || "").trim().slice(0, 40);
+    jogosRef.current = jogosRef.current.map((j) => (j.id !== id ? j : {
+      ...j, data, hora, mandante, visitante, mandanteClubeId: mandanteClubeId || null, visitanteClubeId: visitanteClubeId || null,
+      ...(j.rodada > MAX_JOGOS ? { fase: nomeLimpo || j.fase } : { nomeRodada: nomeLimpo }),
+    }));
+    await salvarJogos(jogosRef.current);
+    jogosFetchIdRef.current++;
+    setJogos([...jogosRef.current].sort((a, b) => a.rodada - b.rodada));
+    invalidarTelasDerivadas();
+    registrarLog("PUT", `/jogos/${id}`, 200, { ok: true });
+    return { status: 200, body: { ok: true } };
   }
 
   async function apiExcluirJogo(tok, id) {
@@ -1606,9 +1635,17 @@ export default function PalpitaoApp() {
     await delay(300);
     const payload = lerToken(tok);
     if (!payload || !payload.isAdmin) return { status: 403, body: { erro: "Só o Administrador pode finalizar a competição." } };
+    const donoId = idDoDono(bancoRef.current);
+    if (!finalizar && donoId && payload.id !== donoId) {
+      return { status: 403, body: { erro: "Só o Administrador pode reabrir uma competição finalizada." } };
+    }
     const compId = compAtivaRef.current;
+    const quem = (bancoRef.current || []).find((u) => u.id === payload.id);
     await mutarCompeticoes((cs) => cs.map((c) => (
-      c.id === compId ? { ...c, finalizada: !!finalizar, finalizada_em: finalizar ? new Date().toISOString() : null } : c
+      c.id === compId ? {
+        ...c, finalizada: !!finalizar, finalizada_em: finalizar ? new Date().toISOString() : null,
+        finalizada_por: finalizar ? { id: payload.id, nome: quem ? quem.nome : "" } : null,
+      } : c
     )));
     return { status: 200, body: { ok: true } };
   }
@@ -2293,6 +2330,7 @@ export default function PalpitaoApp() {
   const pdfData = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(d || "") ? d.split("-").reverse().join("/") : (d || ""));
 
   async function gerarPdfCompeticao() {
+    if (!ehDono) { setPdfErro("Só o Administrador pode gerar o PDF."); return; }
     setPdfErro(""); setPdfMsg("");
     if (!pdfOpcoes.classificacao && !pdfOpcoes.jogos && !pdfOpcoes.palpites) { setPdfErro("Marque pelo menos uma seção."); return; }
     setPdfOcupado(true);
@@ -2304,7 +2342,7 @@ export default function PalpitaoApp() {
       const classif = pontRes.status === 200 ? pontRes.body.classificacao : [];
       const rodadas = visRes.status === 200 ? visRes.body.rodadas : [];
       const listaJogos = [...(jogosLidos ?? jogosRef.current)].sort((a, b) => a.rodada - b.rodada);
-      const rotulo = (j) => pdfTxt(j.fase ? j.fase : `Rodada ${String(j.rodada).padStart(2, "0")}`);
+      const rotulo = (j) => pdfTxt(j.fase ? j.fase : `Rodada ${String(j.rodada).padStart(2, "0")}${j.nomeRodada ? " - " + j.nomeRodada : ""}`);
 
       const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const largura = doc.internal.pageSize.getWidth();
@@ -2482,8 +2520,33 @@ export default function PalpitaoApp() {
     }
   }
 
+  function abrirEdicaoJogo(j) {
+    setEditJogoErro("");
+    setEditJogo({ nome: j.rodada > MAX_JOGOS ? (j.fase || "") : (j.nomeRodada || ""), data: j.data || "", hora: j.hora || "", mandanteId: j.mandanteClubeId || "", visitanteId: j.visitanteClubeId || "" });
+    setEditJogoId(j.id);
+  }
+  async function handleSalvarEdicaoJogo() {
+    setEditJogoErro("");
+    const cm = getClubePorId(editJogo.mandanteId), cv = getClubePorId(editJogo.visitanteId);
+    const alvoAtual = jogos.find((x) => x.id === editJogoId);
+    const mandante = cm ? cm.nome : (alvoAtual && !editJogo.mandanteId ? alvoAtual.mandante : "");
+    const visitante = cv ? cv.nome : (alvoAtual && !editJogo.visitanteId ? alvoAtual.visitante : "");
+    setEditJogoOcupado(true);
+    try {
+      const res = await apiEditarJogo(token, editJogoId, {
+        nome: editJogo.nome, data: editJogo.data, hora: editJogo.hora,
+        mandanteClubeId: editJogo.mandanteId, visitanteClubeId: editJogo.visitanteId, mandante, visitante,
+      });
+      if (res.status === 200) setEditJogoId(null); else setEditJogoErro(res.body.erro);
+    } catch (err) {
+      setEditJogoErro("Erro ao salvar: " + err.message);
+    } finally {
+      setEditJogoOcupado(false);
+    }
+  }
+
   function limparFormJogo() {
-    setRodadaForm(""); setFaseTituloForm(""); setMandanteClubeIdForm(""); setVisitanteClubeIdForm(""); setDataForm(""); setHoraForm(""); setJogoErro("");
+    setRodadaForm(""); setFaseTituloForm(""); setNomeRodadaForm(""); setMandanteClubeIdForm(""); setVisitanteClubeIdForm(""); setDataForm(""); setHoraForm(""); setJogoErro("");
   }
 
   async function handleAdicionarJogo(e) {
@@ -2509,6 +2572,7 @@ export default function PalpitaoApp() {
       const res = await apiCadastrarJogo(token, {
         rodada: ehFase ? "" : rodadaForm,
         fase: ehFase ? faseTituloForm : "",
+        nomeRodada: ehFase ? "" : nomeRodadaForm,
         mandante: clubeMandante.nome, visitante: clubeVisitante.nome,
         mandanteClubeId: clubeMandante.id, visitanteClubeId: clubeVisitante.id,
         data: dataForm, hora: horaForm,
@@ -3026,8 +3090,14 @@ export default function PalpitaoApp() {
     const orig = jogos.find((x) => (j.id && x.id === j.id) || x.rodada === j.rodada);
     return orig && orig.fase ? orig.fase : "";
   };
-  const rotuloJogo = (j) => (j ? (faseDe(j) || `Rodada ${String(j.rodada).padStart(2, "0")}`) : "—");
-  const rotuloJogoLongo = (j) => (j ? (faseDe(j) || `${String(j.rodada).padStart(2, "0")}ª Rodada`) : "");
+  const nomeRodadaDe = (j) => {
+    if (!j) return "";
+    if (j.nomeRodada) return j.nomeRodada;
+    const orig = jogos.find((x) => (j.id && x.id === j.id) || x.rodada === j.rodada);
+    return orig && orig.nomeRodada ? orig.nomeRodada : "";
+  };
+  const rotuloJogo = (j) => (j ? (faseDe(j) || `Rodada ${String(j.rodada).padStart(2, "0")}${nomeRodadaDe(j) ? " · " + nomeRodadaDe(j) : ""}`) : "—");
+  const rotuloJogoLongo = (j) => (j ? (faseDe(j) || `${String(j.rodada).padStart(2, "0")}ª Rodada${nomeRodadaDe(j) ? " · " + nomeRodadaDe(j) : ""}`) : "");
   const rotuloJogoCurto = (j) => (j ? (faseDe(j) || `R${String(j.rodada).padStart(2, "0")}`) : "");
   const rotuloRodadaNum = (n) => rotuloJogo(jogos.find((j) => j.rodada === n) || { rodada: n });
   const usersPendentes = users.filter((u) => statusMembro(u.id) === "pendente");
@@ -3378,10 +3448,13 @@ export default function PalpitaoApp() {
         .inbox-opcao { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border-radius: 10px; border: 1px dashed #F5B400; cursor: pointer; text-align: left; }
         .inbox-opcao input { width: 20px; height: 20px; flex: none; }
         .inbox-opcao span { display: flex; flex-direction: column; }
-        .inbox-opcao small { opacity: .75; }
+        .finalizada-por { font-size: 12.5px; opacity: .9; margin: 6px 0; }
+        .btn-alterar-jogo { width: 100%; margin-top: 10px; padding: 9px; }
+        .jogo-edicao { display: flex; flex-direction: column; gap: 10px; }
+        .inbox-opcao small { color: #FF4D4D; font-weight: 700; line-height: 1.35; }
         .inbox-valida { margin-top: 10px; padding: 8px; border-radius: 10px; background: rgba(46,204,113,.15); border: 1px solid #2ECC71; color: #2ECC71; font-weight: 800; text-align: center; letter-spacing: .5px; }
         .inbox-oculto { font-weight: 800; color: #F5B400; letter-spacing: 2px; }
-        .inbox-legenda { font-size: 11px; text-align: center; padding: 6px 8px; color: #F5B400; }
+        .inbox-legenda { font-size: 11.5px; font-weight: 700; line-height: 1.4; text-align: center; padding: 6px 8px; color: #FF4D4D; }
         .comp-edicao-card { background: rgba(255,255,255,0.05); border: 1px solid var(--pitch-line, rgba(247,245,239,0.25)); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
         .comp-edicao-titulo { font-weight: 800; letter-spacing: .5px; text-transform: uppercase; font-size: 13px; color: #F5B400; }
         .comp-edicao-campo { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
@@ -3835,7 +3908,7 @@ export default function PalpitaoApp() {
             <button className="btn-voltar" onClick={() => setScreen("menu")}><ArrowLeft size={16} /> VOLTAR</button>
             <h2 className="title">Gerar PDF</h2>
             <p className="pontuacao-legenda" style={{ marginTop: -8 }}>Cria um arquivo PDF com as informações de <strong>{compNome}</strong> (somente desta competição) para você enviar aos participantes.</p>
-            {!currentUser.is_admin ? (
+            {!ehDono ? (
               <div className="msg-error"><AlertCircle size={15} />Só o Administrador acessa essa tela.</div>
             ) : (
               <>
@@ -3871,7 +3944,20 @@ export default function PalpitaoApp() {
                   {compFinalizada ? (
                     <>
                       <p className="playoff-final">★ Competição FINALIZADA — a Classificação atual é a CLASSIFICAÇÃO FINAL. Novos jogos e palpites estão bloqueados.</p>
-                      <button type="button" className="btn-confirmar-nao" onClick={() => handleFinalizarCompeticao(false)}>Reabrir competição</button>
+                      {compAtiva && compAtiva.finalizada_por && (
+                        <p className="finalizada-por">
+                          Finalizada por <strong>{compAtiva.finalizada_por.nome || "—"}</strong>
+                          {compAtiva.finalizada_por.id !== idDono ? " (Membro da Comissão)" : " (Administrador)"}
+                          {compAtiva.finalizada_em ? ` em ${new Date(compAtiva.finalizada_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : ""}
+                        </p>
+                      )}
+                      {ehDono ? (
+                        <button type="button" className="btn-confirmar-nao" onClick={() => handleFinalizarCompeticao(false)}>
+                          {compAtiva && compAtiva.finalizada_por && compAtiva.finalizada_por.id !== idDono ? "REVERTER finalização (reabrir competição)" : "Reabrir competição"}
+                        </button>
+                      ) : (
+                        <p className="finalizada-por">Somente o Administrador pode reabrir a competição.</p>
+                      )}
                     </>
                   ) : confirmarFinalizar ? (
                     <>
@@ -4218,7 +4304,7 @@ export default function PalpitaoApp() {
                   <small>Campeão, vice e os 10 primeiros</small>
                 </button>
               )}
-              {currentUser.is_admin && (
+              {ehDono && (
                 <button className="menu-tile" onClick={() => { setPdfErro(""); setPdfMsg(""); setScreen("exportarPdf"); }}>
                   <span className="menu-tile-icon"><Icone3D tipo="pdf" /></span>
                   <strong>Gerar PDF</strong>
@@ -4229,7 +4315,7 @@ export default function PalpitaoApp() {
                 <button className="menu-tile" onClick={() => { setJogoErro(""); setConfirmarFinalizar(false); setScreen("finalizarCompeticao"); }}>
                   <span className="menu-tile-icon"><Icone3D tipo="finalizar" /></span>
                   <strong>Finalizar Competição</strong>
-                  <small>{compFinalizada ? "Finalizada — reabrir" : "Encerrar e fixar a classificação"}</small>
+                  <small>{compFinalizada ? (ehDono ? "Finalizada — reverter/reabrir" : "Finalizada") : "Encerrar e fixar a classificação"}</small>
                 </button>
               )}
               <button className="menu-tile" onClick={abrirResenha}>
@@ -4786,6 +4872,18 @@ export default function PalpitaoApp() {
                     <button type="button" className={tipoJogoForm === "fase" ? "ativo" : ""} onClick={() => setTipoJogoForm("fase")}>Fase extra (Play-off, Semifinal…)</button>
                   </div>
                 )}
+                {tipoJogoForm === "rodada" && !compFinalizada && (
+                  <div className="field">
+                    <label><Trophy size={12} /> Nome da rodada (opcional)</label>
+                    <div className="input-wrap">
+                      <input type="text" list="sugestoes-turno" value={nomeRodadaForm} maxLength={40}
+                        onChange={(e) => setNomeRodadaForm(e.target.value)} placeholder="Ex.: 1º Turno" />
+                      <datalist id="sugestoes-turno">
+                        <option value="1º Turno" /><option value="2º Turno" /><option value="Turno Único" /><option value="Fase de Grupos" /><option value="Classificatória" />
+                      </datalist>
+                    </div>
+                  </div>
+                )}
                 {tipoJogoForm === "fase" && !compFinalizada && (
                   <div className="field">
                     <label><Trophy size={12} /> Título da fase</label>
@@ -4884,6 +4982,36 @@ export default function PalpitaoApp() {
                         <button className="btn-confirmar-nao" onClick={() => setConfirmarExclusaoJogoId(null)}>Não</button>
                       </div>
                     </div>
+                  ) : editJogoId === j.id ? (
+                    <div className="cartao-jogo jogo-edicao">
+                      <div className="comp-edicao-titulo">Alterar jogo — {rotuloJogo(j)}</div>
+                      {editJogoErro && <div className="msg-error"><AlertCircle size={15} />{editJogoErro}</div>}
+                      <div className="field">
+                        <label><Trophy size={12} /> {j.rodada > MAX_JOGOS ? "Título da fase" : "Nome da rodada (opcional)"}</label>
+                        <div className="input-wrap"><input type="text" value={editJogo.nome} maxLength={40} placeholder={j.rodada > MAX_JOGOS ? "Ex.: Semifinal" : "Ex.: 1º Turno"}
+                          onChange={(e) => setEditJogo((o) => ({ ...o, nome: e.target.value }))} /></div>
+                      </div>
+                      <div className="row-2">
+                        <div className="field data-input"><label><Calendar size={12} /> Data</label>
+                          <div className="input-wrap"><input type="date" value={editJogo.data} onChange={(e) => setEditJogo((o) => ({ ...o, data: e.target.value }))} /></div></div>
+                        <div className="field hora-input"><label><Clock size={12} /> Hora</label>
+                          <div className="input-wrap"><input type="time" value={editJogo.hora} onChange={(e) => setEditJogo((o) => ({ ...o, hora: e.target.value }))} /></div></div>
+                      </div>
+                      <div className="field"><label><Shield size={12} /> Time mandante</label>
+                        <div className="input-wrap select-wrap"><select value={editJogo.mandanteId} onChange={(e) => setEditJogo((o) => ({ ...o, mandanteId: e.target.value }))}>
+                          <option value="">{j.mandante} (atual)</option>
+                          {clubes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div></div>
+                      <div className="field"><label><Shield size={12} /> Time visitante</label>
+                        <div className="input-wrap select-wrap"><select value={editJogo.visitanteId} onChange={(e) => setEditJogo((o) => ({ ...o, visitanteId: e.target.value }))}>
+                          <option value="">{j.visitante} (atual)</option>
+                          {clubes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select></div></div>
+                      <div className="comp-edicao-botoes">
+                        <button className="btn-confirmar-sim" onClick={handleSalvarEdicaoJogo} disabled={editJogoOcupado}>
+                          {editJogoOcupado ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Salvar alterações</>}
+                        </button>
+                        <button className="btn-confirmar-nao" onClick={() => setEditJogoId(null)}>Cancelar</button>
+                      </div>
+                    </div>
                   ) : (
                     <div className="cartao-jogo">
                       {currentUser.is_admin && (
@@ -4907,6 +5035,9 @@ export default function PalpitaoApp() {
                           <span className="cartao-time-nome">{j.visitante}</span>
                         </div>
                       </div>
+                      {currentUser.is_admin && (
+                        <button type="button" className="btn-liberar-mini btn-alterar-jogo" onClick={() => abrirEdicaoJogo(j)}>✎ Alterar jogo (data, hora, times, nome)</button>
+                      )}
                       <span className="cartao-status">
                         {temResultado
                           ? `Resultado final: ${j.resultadoMandante} x ${j.resultadoVisitante}`
@@ -5048,7 +5179,7 @@ export default function PalpitaoApp() {
                       <label className="inbox-opcao">
                         <input type="checkbox" checked={!!inboxForm[j.id]}
                           onChange={(e) => { setInboxForm((prev) => ({ ...prev, [j.id]: e.target.checked })); setJogosSalvos((prev) => ({ ...prev, [j.id]: false })); }} />
-                        <span><strong>POSTAR IN-BOX</strong><small>Oculta o seu placar dos outros até o jogo começar</small></span>
+                        <span><strong>POSTAR IN-BOX</strong><small>Oculta o seu placar<br />dos outros até<br />o jogo começar</small></span>
                       </label>
                     )}
                     {!encerrado && (
@@ -5223,7 +5354,7 @@ export default function PalpitaoApp() {
                           <span className="rod-col-palpite">Palpite</span>
                         </div>
                       </div>
-                      {rodadaTodos.some((p) => p.oculto) && <div className="inbox-legenda">🔒 ✱ x ✱ = POSTAGEM IN-BOX VÁLIDA · o placar aparece quando o jogo começar</div>}
+                      {rodadaTodos.some((p) => p.oculto) && <div className="inbox-legenda">🔒 ✱ x ✱ = POSTAGEM IN-BOX VÁLIDA<br />O placar aparece<br />quando o jogo começar</div>}
                       <div className="rod-linhas">
                         {rodadaTodos.map((p, i) => (
                           <div className={`rod-linha ${i % 2 === 0 ? "rod-linha-par" : ""}`} key={i}>
@@ -5879,7 +6010,7 @@ export default function PalpitaoApp() {
                         <span className="rod-col-palpite">Palpite</span>
                       </div>
                     </div>
-                    {rodadaTodos.some((p) => p.oculto) && <div className="inbox-legenda">🔒 ✱ x ✱ = POSTAGEM IN-BOX VÁLIDA · o placar aparece quando o jogo começar</div>}
+                    {rodadaTodos.some((p) => p.oculto) && <div className="inbox-legenda">🔒 ✱ x ✱ = POSTAGEM IN-BOX VÁLIDA<br />O placar aparece<br />quando o jogo começar</div>}
                     <div className="rod-linhas">
                       {rodadaTodos.map((p, i) => (
                         <div className={`rod-linha ${i % 2 === 0 ? "rod-linha-par" : ""}`} key={i}>
