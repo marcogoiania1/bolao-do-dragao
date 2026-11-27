@@ -1117,7 +1117,7 @@ export default function PalpitaoApp() {
       const p = doJogo.find((x) => x.participanteId === part.id);
       if (p) {
         // POSTAR IN-BOX: o placar fica oculto para os outros até o início da partida (rodada fechada)
-        const oculto = !!p.inbox && !jogoJaComecou(jogoRef) && !(payloadLista && payloadLista.id === part.id);
+        const oculto = !!p.inbox && !jogoJaComecou(jogoRef);
         const pmL = oculto ? null : p.placarMandante, pvL = oculto ? null : p.placarVisitante;
         registrados.push({ nome: part.nome, placarMandante: pmL, placarVisitante: pvL, inbox: !!p.inbox, oculto });
         todos.push({ nome: part.nome, placarMandante: pmL, placarVisitante: pvL, registrado: true, inbox: !!p.inbox, oculto });
@@ -1309,20 +1309,21 @@ export default function PalpitaoApp() {
     const rodadas = rodadasComResultado.map((j) => {
       const linhas = participantesOrdenados.map((part) => {
         const palpite = palpitesSalvos.find((x) => x.participanteId === part.id && x.jogoId === j.id);
-        let pontos, placarMandante, placarVisitante, isWO;
+        let pontos, placarMandante, placarVisitante, isWO, oculto = false;
         if (!palpite) {
           pontos = 0; isWO = true; placarMandante = null; placarVisitante = null;
         } else {
           isWO = false;
           placarMandante = palpite.placarMandante;
           placarVisitante = palpite.placarVisitante;
+          if (palpite.inbox && !jogoJaComecou(j)) { placarMandante = null; placarVisitante = null; oculto = true; }
           pontos = classificarPalpite(palpite.placarMandante, palpite.placarVisitante, j.resultadoMandante, j.resultadoVisitante);
         }
         acumuladoPorParticipante[part.id] += pontos;
         return {
           participanteId: part.id,
           nome: part.nome,
-          placarMandante, placarVisitante, isWO, pontos,
+          placarMandante, placarVisitante, isWO, pontos, oculto,
           acumulado: acumuladoPorParticipante[part.id],
         };
       });
@@ -2375,7 +2376,7 @@ export default function PalpitaoApp() {
           doc.autoTable({
             startY: y + 2,
             head: [["Participante", "Palpite", "Pts", "Acumulado"]],
-            body: r.linhas.map((l) => [pdfTxt(l.nome), l.isWO ? "W.O." : `${l.placarMandante} x ${l.placarVisitante}`, l.pontos, l.acumulado]),
+            body: r.linhas.map((l) => [pdfTxt(l.nome), l.isWO ? "W.O." : l.oculto ? "* x *" : `${l.placarMandante} x ${l.placarVisitante}`, l.pontos, l.acumulado]),
             styles: { fontSize: 8.500, cellPadding: 1.300 },
             headStyles: { fillColor: [90, 90, 90] },
             columnStyles: { 1: { halign: "center" }, 2: { halign: "center", fontStyle: "bold" }, 3: { halign: "center" } },
@@ -5103,7 +5104,7 @@ export default function PalpitaoApp() {
                             <span className="viz-col-num">{i + 1}</span>
                             <span className="viz-col-nome" title={l.nome}>{l.nome}</span>
                             <span className={`viz-col-palpite ${l.isWO ? "viz-palpite-wo" : ""}`}>
-                              {l.isWO ? "WO x WO" : `${l.placarMandante} x ${l.placarVisitante}`}
+                              {l.isWO ? "WO x WO" : l.oculto ? "✱ x ✱" : `${l.placarMandante} x ${l.placarVisitante}`}
                             </span>
                             <span className={`viz-col-pts pcor-badge ${ptsClasse}`}>{l.isWO ? "WO" : l.pontos}</span>
                             <span className="viz-col-acum">{l.acumulado}</span>
@@ -5780,7 +5781,7 @@ export default function PalpitaoApp() {
                             <span className="viz-col-num">{i + 1}</span>
                             <span className="viz-col-nome" title={l.nome}>{l.nome}</span>
                             <span className={`viz-col-palpite ${l.isWO ? "viz-palpite-wo" : ""}`}>
-                              {l.isWO ? "WO x WO" : `${l.placarMandante} x ${l.placarVisitante}`}
+                              {l.isWO ? "WO x WO" : l.oculto ? "✱ x ✱" : `${l.placarMandante} x ${l.placarVisitante}`}
                             </span>
                             <span className={`viz-col-pts pcor-badge ${ptsClasse}`}>{l.isWO ? "WO" : l.pontos}</span>
                             <span className="viz-col-acum">{l.acumulado}</span>
