@@ -3382,7 +3382,16 @@ export default function PalpitaoApp() {
         .inbox-valida { margin-top: 10px; padding: 8px; border-radius: 10px; background: rgba(46,204,113,.15); border: 1px solid #2ECC71; color: #2ECC71; font-weight: 800; text-align: center; letter-spacing: .5px; }
         .inbox-oculto { font-weight: 800; color: #F5B400; letter-spacing: 2px; }
         .inbox-legenda { font-size: 11px; text-align: center; padding: 6px 8px; color: #F5B400; }
-        .comp-link-input { flex-basis: 100%; }
+        .comp-edicao-card { background: rgba(255,255,255,0.05); border: 1px solid var(--pitch-line, rgba(247,245,239,0.25)); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+        .comp-edicao-titulo { font-weight: 800; letter-spacing: .5px; text-transform: uppercase; font-size: 13px; color: #F5B400; }
+        .comp-edicao-campo { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+        .comp-edicao-campo > label { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+        .comp-edicao-campo .comp-renomear-input { width: 100%; box-sizing: border-box; flex: none; padding: 10px; font-size: 14px; }
+        .comp-edicao-campo small { opacity: .7; font-size: 11px; }
+        .comp-edicao-link { padding: 10px; border-radius: 10px; border: 1px dashed #5BD0FF; }
+        .comp-edicao-botoes { display: flex; gap: 10px; }
+        .comp-edicao-botoes button { flex: 1; padding: 10px; }
+        .comp-btn-web { margin-top: 0; }
         .comp-bloco { margin-bottom: 10px; }
         .comp-bloco .comp-btn { margin-top: 0; }
         .comp-bloco .comp-acoes { margin-top: 6px; }
@@ -4194,8 +4203,8 @@ export default function PalpitaoApp() {
               {compAtiva && compAtiva.link && (
                 <button className="menu-tile" onClick={() => window.open(compAtiva.link, "_blank", "noopener,noreferrer")}>
                   <span className="menu-tile-icon"><Icone3D tipo="web" /></span>
-                  <strong>Classificação na Web</strong>
-                  <small>Abre fora do app</small>
+                  <strong>Link da Classificação</strong>
+                  <small>{compNome} · fora do app</small>
                 </button>
               )}
               {compFinalizada && (
@@ -4508,6 +4517,17 @@ export default function PalpitaoApp() {
               })}
             </div>)}
 
+            {competicoes.filter((c) => c.link).map((c) => (
+              <button className="btn-resenha comp-btn comp-btn-web" key={"web" + c.id}
+                onClick={() => window.open(c.link, "_blank", "noopener,noreferrer")}>
+                <Icone3D tipo="web" size={44} />
+                <span className="comp-btn-nome">
+                  Link da Classificação da {c.nome}
+                  <small className="comp-sub">Abre o site fora do app</small>
+                </span>
+              </button>
+            ))}
+
             {compPerguntaId && (() => {
               const cp = competicoes.find((x) => x.id === compPerguntaId);
               if (!cp) return null;
@@ -4608,23 +4628,47 @@ export default function PalpitaoApp() {
                     }
                     if (compRenomearId === c.id) {
                       return (
-                        <div className="list-item comp-edicao" key={c.id}>
-                          {(() => { const lg = compRenomearLogo === undefined ? c.logo : compRenomearLogo; return lg ? <img className="comp-logo-prev" src={lg} alt="Logo" /> : <Icone3D tipo="comps" size={44} />; })()}
-                          <label className="btn-liberar-mini comp-logo-btn">
-                            Logo
-                            <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleEscolherLogo(e, "editar")} />
-                          </label>
-                          {(compRenomearLogo === undefined ? c.logo : compRenomearLogo) && (
-                            <button type="button" className="btn-confirmar-nao" onClick={() => setCompRenomearLogo(null)}>Tirar logo</button>
-                          )}
-                          <input className="comp-renomear-input" value={compRenomearNome} maxLength={60}
-                            onChange={(e) => setCompRenomearNome(e.target.value)} />
-                          <input className="comp-renomear-input comp-link-input" value={compRenomearLink} maxLength={300} inputMode="url"
-                            placeholder="Link da classificação fora do app (opcional)" onChange={(e) => setCompRenomearLink(e.target.value)} />
-                          <button className="btn-liberar-mini" onClick={() => handleRenomearCompeticao(c.id)} disabled={compOcupadaId === c.id}>
-                            {compOcupadaId === c.id ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Salvar</>}
-                          </button>
-                          <button className="btn-confirmar-nao" onClick={() => setCompRenomearId(null)}>Cancelar</button>
+                        <div className="comp-edicao-card" key={c.id}>
+                          <div className="comp-edicao-titulo">Editando competição</div>
+
+                          <div className="comp-edicao-campo">
+                            <label>Nome da competição</label>
+                            <input className="comp-renomear-input" value={compRenomearNome} maxLength={60}
+                              onChange={(e) => setCompRenomearNome(e.target.value)} />
+                          </div>
+
+                          <div className="comp-edicao-campo">
+                            <label>Logo</label>
+                            <div className="comp-logo-linha">
+                              {(() => { const lg = compRenomearLogo === undefined ? c.logo : compRenomearLogo; return lg ? <img className="comp-logo-prev" src={lg} alt="Logo" /> : <Icone3D tipo="comps" size={44} />; })()}
+                              <label className="btn-liberar-mini comp-logo-btn">
+                                Trocar imagem
+                                <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleEscolherLogo(e, "editar")} />
+                              </label>
+                              {(compRenomearLogo === undefined ? c.logo : compRenomearLogo) && (
+                                <button type="button" className="btn-confirmar-nao" onClick={() => setCompRenomearLogo(null)}>Tirar logo</button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="comp-edicao-campo comp-edicao-link">
+                            <label><Icone3D tipo="web" size={22} /> Link da Classificação de {compRenomearNome || c.nome}</label>
+                            <input className="comp-renomear-input" value={compRenomearLink} maxLength={300} inputMode="url"
+                              placeholder="Cole aqui o endereço do site (ex.: www.meusite.com/classificacao)" onChange={(e) => setCompRenomearLink(e.target.value)} />
+                            <small>Os participantes ganham um botão que abre esse site fora do app. Deixe em branco para não mostrar o botão.</small>
+                            {compRenomearLink.trim() && (
+                              <button type="button" className="btn-liberar-mini" onClick={() => window.open(/^https?:\/\//i.test(compRenomearLink.trim()) ? compRenomearLink.trim() : "https://" + compRenomearLink.trim(), "_blank", "noopener,noreferrer")}>
+                                Testar link
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="comp-edicao-botoes">
+                            <button className="btn-confirmar-sim" onClick={() => handleRenomearCompeticao(c.id)} disabled={compOcupadaId === c.id}>
+                              {compOcupadaId === c.id ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Salvar</>}
+                            </button>
+                            <button className="btn-confirmar-nao" onClick={() => setCompRenomearId(null)}>Cancelar</button>
+                          </div>
                         </div>
                       );
                     }
@@ -4634,11 +4678,11 @@ export default function PalpitaoApp() {
                           {compOcupadaId === c.id ? <Loader2 size={26} className="spin" /> : (c.logo ? renderLogoComp(c, 38) : <Icone3D tipo="comps" size={38} />)}
                           <span className="comp-btn-nome">
                             {c.nome}{c.finalizada ? " (finalizada)" : ""}
-                            <small className="comp-sub">{qtd} participante(s){pend > 0 ? ` · ${pend} aguardando` : ""}</small>
+                            <small className="comp-sub">{qtd} participante(s){pend > 0 ? ` · ${pend} aguardando` : ""}{c.link ? " · 🌐 link da classificação cadastrado" : " · sem link da classificação"}</small>
                           </span>
                         </button>
                         <div className="comp-acoes">
-                          <button className="btn-promover" title="Editar nome e logo" onClick={() => { setCompRenomearId(c.id); setCompRenomearNome(c.nome); setCompRenomearLogo(undefined); setCompRenomearLink(c.link || ""); }}>Editar</button>
+                          <button className="btn-promover" title="Editar nome, logo e link da classificação" onClick={() => { setCompRenomearId(c.id); setCompRenomearNome(c.nome); setCompRenomearLogo(undefined); setCompRenomearLink(c.link || ""); }}>Editar / Link</button>
                           {ehDono && c.id !== COMP_LEGADA_ID && (
                             <button className="jogo-del" title="Excluir competição" onClick={() => setCompExcluirId(c.id)}>
                               <Trash2 size={14} />
