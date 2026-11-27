@@ -41,6 +41,7 @@ function idDoDono(lista) {
   const a = (lista || []).find((p) => p.is_admin);
   return a ? a.id : null;
 }
+const CHAVE_RECADOS = "palpitao_recados"; // recados e avaliações do app (o Administrador aprova antes de aparecerem)
 const CHAVE_CHAT = "palpitao_chat"; // a Resenha é UMA só para o app inteiro (não por competição)
 const CHAVE_RESENHA_CONFIG = "palpitao_resenha_config"; // { escudo: imagem em base64 }
 function lerLocal(chave) { try { return localStorage.getItem(chave); } catch { return null; } }
@@ -60,7 +61,7 @@ const ICONES3D_CORES = {
   grupo: ["#5BC0FF", "#1769D1"], aprovar: ["#6EE7A0", "#16994F"], times: ["#FF7A7A", "#B3141B"], jogos: ["#FFD36B", "#E08A00"],
   palpites: ["#7DE3FF", "#1C8FC9"], pontuacao: ["#FFE27A", "#E0A100"], classificacao: ["#B39DFF", "#5B3FD1"],
   desempenho: ["#6EE7C8", "#0E9C84"], hall: ["#FFB86B", "#E0610A"], perfil: ["#9AA9FF", "#3C4FD6"], comps: ["#FFD36B", "#C27A00"],
-  finalizar: ["#8E9AAF", "#2F3744"], campeao: ["#FFD36B", "#D9760A"], pessoa: ["#8FA6C8", "#46608A"], camera: ["#9AA7BA", "#47566E"], pdf: ["#FF6B6B", "#A81220"], liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
+  finalizar: ["#8E9AAF", "#2F3744"], campeao: ["#FFD36B", "#D9760A"], pessoa: ["#8FA6C8", "#46608A"], camera: ["#9AA7BA", "#47566E"], recados: ["#FFB347", "#D9570A"], web: ["#5BD0FF", "#1659C9"], pdf: ["#FF6B6B", "#A81220"], liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
 };
 const ESTRELA_PTS = "32,25 33.65,29.74 38.66,29.84 34.66,32.87 36.11,37.66 32,34.8 27.89,37.66 29.34,32.87 25.34,29.84 30.35,29.74";
 function Icone3D({ tipo, size = 58, img }) {
@@ -172,6 +173,18 @@ function Icone3D({ tipo, size = 58, img }) {
           <rect x="16" y="33" width="33" height="13" fill="#E5322D" />
           <text x="32.500" y="43.500" textAnchor="middle" fontSize="11" fontWeight="800" fill="#fff">PDF</text>
           <rect x="21" y="22" width="17" height="2.500" rx="1" fill="#9AA8BC" /><rect x="21" y="27" width="22" height="2.500" rx="1" fill="#9AA8BC" />
+        </>);
+      case "recados":
+        return (<>
+          <path d="M10 12h44a4 4 0 0 1 4 4v26a4 4 0 0 1-4 4H30l-12 10V46h-8a4 4 0 0 1-4-4V16a4 4 0 0 1 4-4z" fill="url(#wg)" transform="translate(-2 -2) scale(.97)" />
+          <g transform="translate(32 26) scale(2.300) translate(-32 -31)"><polygon points={ESTRELA_PTS} fill="url(#gg)" stroke="#B87800" strokeWidth=".5" /></g>
+        </>);
+      case "web":
+        return (<>
+          <circle cx="32" cy="32" r="20" fill="url(#wg)" />
+          <ellipse cx="32" cy="32" rx="8.500" ry="20" fill="none" stroke="#1659C9" strokeWidth="1.800" />
+          <path d="M12 32h40M15 22h34M15 42h34" stroke="#1659C9" strokeWidth="1.800" fill="none" />
+          <circle cx="32" cy="32" r="20" fill="none" stroke="#1659C9" strokeWidth="2" />
         </>);
       case "liberar":
         return (<>
@@ -428,11 +441,19 @@ export default function PalpitaoApp() {
   const [loadingPalpites, setLoadingPalpites] = useState(false);
   const [salvandoJogoId, setSalvandoJogoId] = useState(null);
   const [jogosSalvos, setJogosSalvos] = useState({}); // { [jogoId]: true }
+  const [inboxForm, setInboxForm] = useState({}); // { [jogoId]: true } = POSTAR IN-BOX (placar oculto até o jogo começar)
   const [users, setUsers] = useState([]);
   const [competicoes, setCompeticoes] = useState([]);
   const [compAtivaId, setCompAtivaId] = useState(null);
   const [compNomeForm, setCompNomeForm] = useState("");
   const [compPerguntaId, setCompPerguntaId] = useState(null);
+  const [compRenomearLink, setCompRenomearLink] = useState("");
+  const [recados, setRecados] = useState([]);
+  const [recadoTexto, setRecadoTexto] = useState("");
+  const [recadoNota, setRecadoNota] = useState(0);
+  const [recadoOcupado, setRecadoOcupado] = useState(false);
+  const [recadoErro, setRecadoErro] = useState("");
+  const [recadoMsg, setRecadoMsg] = useState("");
   const [chatMsgs, setChatMsgs] = useState([]);
   const [chatTexto, setChatTexto] = useState("");
   const [chatEnviando, setChatEnviando] = useState(false);
@@ -958,7 +979,7 @@ export default function PalpitaoApp() {
   }
 
   // qualquer participante logado pode apostar; Admin também pode apostar em nome de outro participante
-  async function apiSalvarPalpite(tok, { jogoId, placarMandante, placarVisitante, participanteIdAlvo }) {
+  async function apiSalvarPalpite(tok, { jogoId, placarMandante, placarVisitante, participanteIdAlvo, inbox }) {
     await delay(400);
     const payload = lerToken(tok);
     if (!payload) {
@@ -1021,11 +1042,12 @@ export default function PalpitaoApp() {
     if (existente) {
       existente.placarMandante = pm;
       existente.placarVisitante = pv;
+      existente.inbox = !!inbox;
       existente.atualizadoEm = new Date().toISOString();
     } else {
       palpitesRef.current.push({
         id: crypto.randomUUID(), participanteId, jogoId,
-        placarMandante: pm, placarVisitante: pv, atualizadoEm: new Date().toISOString(),
+        placarMandante: pm, placarVisitante: pv, inbox: !!inbox, atualizadoEm: new Date().toISOString(),
       });
     }
     await salvarPalpitesStorage(palpitesRef.current);
@@ -1086,14 +1108,19 @@ export default function PalpitaoApp() {
     const participantes = participantesLidos ?? filtrarPorCompeticao(bancoRef.current);
     const palpites = palpitesLidos ?? palpitesRef.current;
     const doJogo = palpites.filter((p) => p.jogoId === jogoId);
+    const jogoRef = jogosRef.current.find((j) => j.id === jogoId);
+    const payloadLista = lerToken(tok);
     const registrados = [];
     const naoRegistrados = [];
     const todos = [];
     participantes.forEach((part) => {
       const p = doJogo.find((x) => x.participanteId === part.id);
       if (p) {
-        registrados.push({ nome: part.nome, placarMandante: p.placarMandante, placarVisitante: p.placarVisitante });
-        todos.push({ nome: part.nome, placarMandante: p.placarMandante, placarVisitante: p.placarVisitante, registrado: true });
+        // POSTAR IN-BOX: o placar fica oculto para os outros até o início da partida (rodada fechada)
+        const oculto = !!p.inbox && !jogoJaComecou(jogoRef) && !(payloadLista && payloadLista.id === part.id);
+        const pmL = oculto ? null : p.placarMandante, pvL = oculto ? null : p.placarVisitante;
+        registrados.push({ nome: part.nome, placarMandante: pmL, placarVisitante: pvL, inbox: !!p.inbox, oculto });
+        todos.push({ nome: part.nome, placarMandante: pmL, placarVisitante: pvL, registrado: true, inbox: !!p.inbox, oculto });
       } else {
         naoRegistrados.push({ nome: part.nome });
         todos.push({ nome: part.nome, placarMandante: null, placarVisitante: null, registrado: false });
@@ -1539,7 +1566,7 @@ export default function PalpitaoApp() {
     return { status: 201, body: { competicao: nova } };
   }
 
-  async function apiRenomearCompeticao(tok, id, nome, logo) {
+  async function apiRenomearCompeticao(tok, id, nome, logo, link) {
     await delay(300);
     const payload = lerToken(tok);
     if (!payload || !payload.isAdmin) return { status: 403, body: { erro: "Só o Administrador pode renomear competições." } };
@@ -1549,7 +1576,9 @@ export default function PalpitaoApp() {
     if (atual.some((c) => c.id !== id && c.nome.trim().toLowerCase() === limpo.toLowerCase())) {
       return { status: 409, body: { erro: "Já existe uma competição com esse nome." } };
     }
-    await mutarCompeticoes((cs) => cs.map((c) => (c.id === id ? { ...c, nome: limpo, ...(logo !== undefined ? { logo } : {}) } : c)));
+    let linkLimpo = (link || "").trim();
+    if (linkLimpo && !/^https?:\/\//i.test(linkLimpo)) linkLimpo = "https://" + linkLimpo;
+    await mutarCompeticoes((cs) => cs.map((c) => (c.id === id ? { ...c, nome: limpo, link: linkLimpo, ...(logo !== undefined ? { logo } : {}) } : c)));
     return { status: 200, body: { ok: true } };
   }
 
@@ -1628,6 +1657,12 @@ export default function PalpitaoApp() {
     if (screen === "resultadoFinal" && token) carregarResultadoFinal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, token]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (screen === "recados" || (currentUser.is_admin && (screen === "competicoesHome" || screen === "menu"))) atualizarRecados();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, currentUser && currentUser.id]);
 
   // Resenha do Bolão: carrega e atualiza a cada 5 s enquanto a tela está aberta
   useEffect(() => {
@@ -1769,6 +1804,7 @@ export default function PalpitaoApp() {
           });
           setPlacaresForm(form);
           setJogosSalvos(Object.fromEntries(res.body.palpites.map((p) => [p.jogoId, true])));
+          setInboxForm(Object.fromEntries(res.body.palpites.filter((p) => p.inbox).map((p) => [p.jogoId, true])));
         }
         setLoadingPalpites(false);
       });
@@ -2011,6 +2047,55 @@ export default function PalpitaoApp() {
     if (parts) { bancoRef.current = parts; setUsers(parts); }
   }
 
+  // ---------- RECADOS E AVALIAÇÃO DO APP ----------
+  async function carregarRecados() {
+    try {
+      const res = await storageGet(CHAVE_RECADOS);
+      return res && res.value ? JSON.parse(res.value) : [];
+    } catch { return null; }
+  }
+  async function atualizarRecados() {
+    const lista = await carregarRecados();
+    if (lista) setRecados(lista);
+  }
+  async function mutarRecados(fn) {
+    const atual = (await carregarRecados()) ?? recados;
+    const nova = fn(atual);
+    await storageSet(CHAVE_RECADOS, JSON.stringify(nova));
+    setRecados(nova);
+  }
+  async function handleEnviarRecado(e) {
+    e.preventDefault();
+    setRecadoErro(""); setRecadoMsg("");
+    const texto = recadoTexto.trim();
+    if (!recadoNota && texto.length < 3) { setRecadoErro("Dê uma nota (estrelas) e/ou escreva um recado."); return; }
+    setRecadoOcupado(true);
+    try {
+      const novo = {
+        id: crypto.randomUUID(), autorId: currentUser.id, autor: currentUser.nome,
+        nota: recadoNota || null, texto: texto.slice(0, 400), ts: new Date().toISOString(),
+        status: currentUser.is_admin ? "aprovado" : "pendente",
+      };
+      await mutarRecados((l) => [...l, novo].slice(-300));
+      setRecadoTexto(""); setRecadoNota(0);
+      setRecadoMsg(currentUser.is_admin ? "Publicado!" : "Obrigado! Seu recado foi enviado e aparece depois que o Administrador aprovar.");
+    } catch (err) {
+      setRecadoErro("Não foi possível enviar: " + err.message);
+    } finally {
+      setRecadoOcupado(false);
+    }
+  }
+  async function handleModerarRecado(id, acao) {
+    if (!currentUser.is_admin) return;
+    setRecadoErro("");
+    try {
+      if (acao === "aprovar") await mutarRecados((l) => l.map((r) => (r.id === id ? { ...r, status: "aprovado" } : r)));
+      else await mutarRecados((l) => l.filter((r) => r.id !== id));
+    } catch (err) {
+      setRecadoErro("Não foi possível atualizar: " + err.message);
+    }
+  }
+
   // ---------- RESENHA DO BOLÃO (bate-papo da competição) ----------
   async function carregarChat() {
     try {
@@ -2144,7 +2229,7 @@ export default function PalpitaoApp() {
     setCompErro(""); setCompMsg("");
     setCompOcupadaId(id);
     try {
-      const res = await apiRenomearCompeticao(token, id, compRenomearNome, compRenomearLogo);
+      const res = await apiRenomearCompeticao(token, id, compRenomearNome, compRenomearLogo, compRenomearLink);
       if (res.status === 200) setCompRenomearId(null);
       else setCompErro(res.body.erro);
     } finally {
@@ -2806,7 +2891,7 @@ export default function PalpitaoApp() {
     try {
       const res = await apiSalvarPalpite(token, {
         jogoId, placarMandante: par.mandante, placarVisitante: par.visitante,
-        participanteIdAlvo: participanteAlvoId || undefined,
+        participanteIdAlvo: participanteAlvoId || undefined, inbox: !!inboxForm[jogoId],
       });
       if (res.status === 200) {
         setJogosSalvos((prev) => ({ ...prev, [jogoId]: true }));
@@ -2827,6 +2912,7 @@ export default function PalpitaoApp() {
       const res = await apiLimparPalpite(token, { jogoId, participanteIdAlvo: participanteAlvoId || undefined });
       if (res.status === 200) {
         setPlacaresForm((prev) => ({ ...prev, [jogoId]: { mandante: "", visitante: "" } }));
+        setInboxForm((prev) => ({ ...prev, [jogoId]: false }));
         setJogosSalvos((prev) => ({ ...prev, [jogoId]: false }));
       } else {
         setPalpiteErro(res.body.erro);
@@ -2913,6 +2999,13 @@ export default function PalpitaoApp() {
   const resenhaEscudo = resenhaEscudoCustom || ESCUDO_ATLETICO; // padrão: escudo do Atlético
   const chatNaoLidas = currentUser && chatLidoTs
     ? chatMsgs.filter((m) => m.autorId !== currentUser.id && m.ts > chatLidoTs).length : 0;
+  const recadosPendentes = recados.filter((r) => r.status === "pendente").length;
+  const recadosAprovados = recados.filter((r) => r.status === "aprovado").slice().reverse();
+  const recadosMeus = recados.filter((r) => r.status === "pendente" && currentUser && r.autorId === currentUser.id).slice().reverse();
+  const recadosPendLista = recados.filter((r) => r.status === "pendente").slice().reverse();
+  const notasRecados = recados.filter((r) => r.status === "aprovado" && r.nota);
+  const mediaRecados = notasRecados.length ? notasRecados.reduce((a, r) => a + r.nota, 0) / notasRecados.length : 0;
+  const estrelasTxt = (n) => "★".repeat(n) + "☆".repeat(5 - n);
   const iconeResenha = (tam) => (resenhaEscudo
     ? <img src={resenhaEscudo} alt="" style={{ width: tam, height: tam, objectFit: "contain" }} />
     : <MessageCircle size={tam} />);
@@ -3269,6 +3362,26 @@ export default function PalpitaoApp() {
         .comp-pergunta p { margin: 0; color: var(--chalk); font-size: 14px; line-height: 1.45; }
         .comp-pergunta-botoes { display: flex; gap: 10px; margin-top: 8px; }
         .comp-pergunta-botoes button { min-width: 96px; padding: 10px 14px; font-size: 14px; font-weight: 800; }
+        .recado-media { text-align: center; margin: 8px 0 12px; }
+        .recado-estrelas { color: #F5B400; letter-spacing: 2px; margin: 0 6px; }
+        .recado-form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+        .recado-nota { display: flex; gap: 4px; justify-content: center; }
+        .recado-estrela { background: none; border: 0; font-size: 34px; line-height: 1; color: #6b7280; cursor: pointer; padding: 0 2px; }
+        .recado-estrela.on { color: #F5B400; }
+        .recado-texto { width: 100%; box-sizing: border-box; border-radius: 10px; padding: 10px; font: inherit; resize: vertical; }
+        .recado-sub { margin: 16px 0 8px; font-size: 14px; }
+        .recado-item { flex-direction: column; align-items: stretch; gap: 6px; }
+        .recado-cab { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .recado-corpo { white-space: pre-wrap; word-break: break-word; }
+        .recado-acoes { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        .inbox-opcao { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 10px 12px; border-radius: 10px; border: 1px dashed #F5B400; cursor: pointer; text-align: left; }
+        .inbox-opcao input { width: 20px; height: 20px; flex: none; }
+        .inbox-opcao span { display: flex; flex-direction: column; }
+        .inbox-opcao small { opacity: .75; }
+        .inbox-valida { margin-top: 10px; padding: 8px; border-radius: 10px; background: rgba(46,204,113,.15); border: 1px solid #2ECC71; color: #2ECC71; font-weight: 800; text-align: center; letter-spacing: .5px; }
+        .inbox-oculto { font-weight: 800; color: #F5B400; letter-spacing: 2px; }
+        .inbox-legenda { font-size: 11px; text-align: center; padding: 6px 8px; color: #F5B400; }
+        .comp-link-input { flex-basis: 100%; }
         .comp-bloco { margin-bottom: 10px; }
         .comp-bloco .comp-btn { margin-top: 0; }
         .comp-bloco .comp-acoes { margin-top: 6px; }
@@ -3638,10 +3751,6 @@ export default function PalpitaoApp() {
             <button className="link-btn" onClick={() => { limparCadastro(); setScreen("cadastro"); }}>
               Ainda não tem cadastro? Cadastre-se aqui
             </button>
-            <div className="scoreboard">
-              <span className="scoreboard-label">Participantes cadastrados</span>
-              <span className="scoreboard-count">{contadorTxt}/100</span>
-            </div>
           </div>
         )}
 
@@ -3767,6 +3876,78 @@ export default function PalpitaoApp() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {screen === "recados" && currentUser && (
+          <div className="screen">
+            <button className="btn-voltar" onClick={() => setScreen(compAtivaId ? "menu" : "competicoesHome")}><ArrowLeft size={16} /> VOLTAR</button>
+            <div className="resenha-topo">
+              <Icone3D tipo="recados" size={52} />
+              <h2 className="title" style={{ margin: 0 }}>RECADOS E AVALIAÇÃO</h2>
+            </div>
+            <p className="pontuacao-legenda">Conte o que achou do app e deixe seu recado. Ele aparece para todos depois que o Administrador aprovar.</p>
+
+            <div className="recado-media">
+              {notasRecados.length > 0
+                ? (<><span className="recado-estrelas">{estrelasTxt(Math.round(mediaRecados))}</span><strong>{mediaRecados.toFixed(1).replace(".", ",")}</strong> <small>({notasRecados.length} {notasRecados.length === 1 ? "avaliação" : "avaliações"})</small></>)
+                : <small>Ainda sem avaliações.</small>}
+            </div>
+
+            <form className="recado-form" onSubmit={handleEnviarRecado}>
+              <div className="recado-nota" role="radiogroup" aria-label="Sua nota">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button type="button" key={n} className={`recado-estrela ${n <= recadoNota ? "on" : ""}`}
+                    aria-label={`${n} estrela${n > 1 ? "s" : ""}`} onClick={() => setRecadoNota(recadoNota === n ? 0 : n)}>★</button>
+                ))}
+              </div>
+              <textarea className="recado-texto" value={recadoTexto} maxLength={400} rows={3}
+                placeholder="Escreva seu recado (opcional se der nota)" onChange={(e) => setRecadoTexto(e.target.value)} />
+              {recadoErro && <div className="msg-error"><AlertCircle size={15} />{recadoErro}</div>}
+              {recadoMsg && <div className="msg-sucesso">{recadoMsg}</div>}
+              <button type="submit" className="btn-liberar-mini" disabled={recadoOcupado}>{recadoOcupado ? "Enviando..." : "ENVIAR"}</button>
+            </form>
+
+            {currentUser.is_admin && recadosPendLista.length > 0 && (
+              <>
+                <h3 className="recado-sub">Aguardando aprovação ({recadosPendLista.length})</h3>
+                {recadosPendLista.map((r) => (
+                  <div className="list-item recado-item" key={r.id}>
+                    <div className="recado-cab"><strong>{r.autor}</strong>{r.nota ? <span className="recado-estrelas">{estrelasTxt(r.nota)}</span> : null}</div>
+                    {r.texto && <div className="recado-corpo">{r.texto}</div>}
+                    <div className="recado-acoes">
+                      <button type="button" className="btn-confirmar-sim" onClick={() => handleModerarRecado(r.id, "aprovar")}>Aprovar</button>
+                      <button type="button" className="btn-confirmar-nao" onClick={() => handleModerarRecado(r.id, "recusar")}>Recusar</button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {!currentUser.is_admin && recadosMeus.length > 0 && (
+              <>
+                <h3 className="recado-sub">Seus recados em análise</h3>
+                {recadosMeus.map((r) => (
+                  <div className="list-item recado-item" key={r.id}>
+                    <div className="recado-cab"><small>Aguardando aprovação</small>{r.nota ? <span className="recado-estrelas">{estrelasTxt(r.nota)}</span> : null}</div>
+                    {r.texto && <div className="recado-corpo">{r.texto}</div>}
+                  </div>
+                ))}
+              </>
+            )}
+
+            <h3 className="recado-sub">Recados da galera</h3>
+            {recadosAprovados.length === 0 && <div className="log-empty">Nenhum recado publicado ainda.</div>}
+            {recadosAprovados.map((r) => (
+              <div className="list-item recado-item" key={r.id}>
+                <div className="recado-cab"><strong>{r.autor}</strong>{r.nota ? <span className="recado-estrelas">{estrelasTxt(r.nota)}</span> : null}</div>
+                {r.texto && <div className="recado-corpo">{r.texto}</div>}
+                <div className="recado-acoes">
+                  <small>{formatarHoraChat(r.ts)}</small>
+                  {currentUser.is_admin && <button type="button" className="chat-apagar" title="Excluir" onClick={() => handleModerarRecado(r.id, "excluir")}><Trash2 size={13} /></button>}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -3897,10 +4078,6 @@ export default function PalpitaoApp() {
               </button>
             </div>
             <button className="link-btn" onClick={() => setScreen("login")}>Já tem cadastro? Entrar</button>
-            <div className="scoreboard">
-              <span className="scoreboard-label">Vagas preenchidas</span>
-              <span className="scoreboard-count">{contadorTxt}/100</span>
-            </div>
           </div>
         )}
 
@@ -4011,6 +4188,13 @@ export default function PalpitaoApp() {
                   <span className="menu-tile-icon"><Icone3D tipo="resultado" /></span>
                   <strong>Postar Resultado</strong>
                   <small>Placar final de cada rodada</small>
+                </button>
+              )}
+              {compAtiva && compAtiva.link && (
+                <button className="menu-tile" onClick={() => window.open(compAtiva.link, "_blank", "noopener,noreferrer")}>
+                  <span className="menu-tile-icon"><Icone3D tipo="web" /></span>
+                  <strong>Classificação na Web</strong>
+                  <small>Abre fora do app</small>
                 </button>
               )}
               {compFinalizada && (
@@ -4353,6 +4537,12 @@ export default function PalpitaoApp() {
               <span>RESENHA DO BOLÃO</span>
               {chatNaoLidas > 0 && <span className="badge-nova">{chatNaoLidas > 99 ? "99+" : chatNaoLidas}</span>}
             </button>
+
+            <button className="btn-resenha" onClick={() => { setRecadoErro(""); setRecadoMsg(""); setScreen("recados"); }}>
+              <Icone3D tipo="recados" size={52} />
+              <span>RECADOS E AVALIAÇÃO</span>
+              {currentUser.is_admin && recadosPendentes > 0 && <span className="badge-nova">{recadosPendentes}</span>}
+            </button>
             <button className="btn-logout" onClick={handleLogout}><LogOut size={15} /> Sair</button>
           </div>
         )}
@@ -4428,6 +4618,8 @@ export default function PalpitaoApp() {
                           )}
                           <input className="comp-renomear-input" value={compRenomearNome} maxLength={60}
                             onChange={(e) => setCompRenomearNome(e.target.value)} />
+                          <input className="comp-renomear-input comp-link-input" value={compRenomearLink} maxLength={300} inputMode="url"
+                            placeholder="Link da classificação fora do app (opcional)" onChange={(e) => setCompRenomearLink(e.target.value)} />
                           <button className="btn-liberar-mini" onClick={() => handleRenomearCompeticao(c.id)} disabled={compOcupadaId === c.id}>
                             {compOcupadaId === c.id ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Salvar</>}
                           </button>
@@ -4445,7 +4637,7 @@ export default function PalpitaoApp() {
                           </span>
                         </button>
                         <div className="comp-acoes">
-                          <button className="btn-promover" title="Editar nome e logo" onClick={() => { setCompRenomearId(c.id); setCompRenomearNome(c.nome); setCompRenomearLogo(undefined); }}>Editar</button>
+                          <button className="btn-promover" title="Editar nome e logo" onClick={() => { setCompRenomearId(c.id); setCompRenomearNome(c.nome); setCompRenomearLogo(undefined); setCompRenomearLink(c.link || ""); }}>Editar</button>
                           {ehDono && c.id !== COMP_LEGADA_ID && (
                             <button className="jogo-del" title="Excluir competição" onClick={() => setCompExcluirId(c.id)}>
                               <Trash2 size={14} />
@@ -4801,6 +4993,13 @@ export default function PalpitaoApp() {
                         {jaComecou ? "Jogo já começou — palpites encerrados" : "Aguardando o Administrador liberar essa rodada"}
                       </span>
                     ) : (
+                      <label className="inbox-opcao">
+                        <input type="checkbox" checked={!!inboxForm[j.id]}
+                          onChange={(e) => { setInboxForm((prev) => ({ ...prev, [j.id]: e.target.checked })); setJogosSalvos((prev) => ({ ...prev, [j.id]: false })); }} />
+                        <span><strong>POSTAR IN-BOX</strong><small>Oculta o seu placar dos outros até o jogo começar</small></span>
+                      </label>
+                    )}
+                    {!encerrado && (
                       <button
                         className={`btn-palpite ${salvo ? "salvo" : ""}`}
                         style={{ marginTop: 16 }}
@@ -4816,6 +5015,7 @@ export default function PalpitaoApp() {
                         )}
                       </button>
                     )}
+                    {salvo && inboxForm[j.id] && <div className="inbox-valida">🔒 POSTAGEM IN-BOX VÁLIDA</div>}
                     {currentUser.is_admin && (
                       <button
                         className="btn-limpar-palpite"
@@ -4971,13 +5171,14 @@ export default function PalpitaoApp() {
                           <span className="rod-col-palpite">Palpite</span>
                         </div>
                       </div>
+                      {rodadaTodos.some((p) => p.oculto) && <div className="inbox-legenda">🔒 ✱ x ✱ = POSTAGEM IN-BOX VÁLIDA · o placar aparece quando o jogo começar</div>}
                       <div className="rod-linhas">
                         {rodadaTodos.map((p, i) => (
                           <div className={`rod-linha ${i % 2 === 0 ? "rod-linha-par" : ""}`} key={i}>
                             <span className="rod-col-num">{i + 1}</span>
                             <span className="rod-col-nome" title={p.nome}>{p.nome}</span>
                             <span className="rod-col-palpite">
-                              {p.registrado ? `${p.placarMandante} x ${p.placarVisitante}` : ""}
+                              {p.registrado ? (p.oculto ? <span className="inbox-oculto" title="POSTAGEM IN-BOX VÁLIDA">✱ x ✱</span> : `${p.placarMandante} x ${p.placarVisitante}`) : ""}
                             </span>
                           </div>
                         ))}
@@ -5626,13 +5827,14 @@ export default function PalpitaoApp() {
                         <span className="rod-col-palpite">Palpite</span>
                       </div>
                     </div>
+                    {rodadaTodos.some((p) => p.oculto) && <div className="inbox-legenda">🔒 ✱ x ✱ = POSTAGEM IN-BOX VÁLIDA · o placar aparece quando o jogo começar</div>}
                     <div className="rod-linhas">
                       {rodadaTodos.map((p, i) => (
                         <div className={`rod-linha ${i % 2 === 0 ? "rod-linha-par" : ""}`} key={i}>
                           <span className="rod-col-num">{i + 1}</span>
                           <span className="rod-col-nome" title={p.nome}>{p.nome}</span>
                           <span className="rod-col-palpite">
-                            {p.registrado ? `${p.placarMandante} x ${p.placarVisitante}` : ""}
+                            {p.registrado ? (p.oculto ? <span className="inbox-oculto" title="POSTAGEM IN-BOX VÁLIDA">✱ x ✱</span> : `${p.placarMandante} x ${p.placarVisitante}`) : ""}
                           </span>
                         </div>
                       ))}
