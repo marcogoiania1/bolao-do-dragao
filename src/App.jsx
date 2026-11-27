@@ -3391,7 +3391,11 @@ export default function PalpitaoApp() {
         .comp-edicao-link { padding: 10px; border-radius: 10px; border: 1px dashed #5BD0FF; }
         .comp-edicao-botoes { display: flex; gap: 10px; }
         .comp-edicao-botoes button { flex: 1; padding: 10px; }
-        .comp-btn-web { margin-top: 0; }
+        .comp-item-part { margin-bottom: 10px; }
+        .comp-lista-botoes .comp-item-part .comp-btn { margin-bottom: 0; }
+        .comp-link-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; padding: 9px 12px;
+          border-radius: 12px; border: 1px solid #5BD0FF; background: rgba(91,208,255,0.12); color: inherit; font-weight: 800; font-size: 12.5px;
+          letter-spacing: .4px; cursor: pointer; }
         .comp-bloco { margin-bottom: 10px; }
         .comp-bloco .comp-btn { margin-top: 0; }
         .comp-bloco .comp-acoes { margin-top: 6px; }
@@ -4506,27 +4510,24 @@ export default function PalpitaoApp() {
                 const st = c.membros ? c.membros[currentUser.id] : undefined;
                 const rotuloSt = st === "aprovado" ? "Você participa — toque para entrar" : st === "pendente" ? "Pedido aguardando aprovação" : "Toque para pedir participação";
                 return (
-                  <button className="btn-resenha comp-btn" key={c.id} onClick={() => handleClicarCompeticao(c)} disabled={compOcupadaId === c.id}>
-                    {compOcupadaId === c.id ? <Loader2 size={26} className="spin" /> : (c.logo ? renderLogoComp(c, 44) : <Icone3D tipo="comps" size={44} />)}
-                    <span className="comp-btn-nome">
-                      {c.nome}{c.finalizada ? " (finalizada)" : ""}
-                      <small className="comp-sub">{rotuloSt}</small>
-                    </span>
-                  </button>
+                  <div className="comp-item-part" key={c.id}>
+                    <button className="btn-resenha comp-btn" onClick={() => handleClicarCompeticao(c)} disabled={compOcupadaId === c.id}>
+                      {compOcupadaId === c.id ? <Loader2 size={26} className="spin" /> : (c.logo ? renderLogoComp(c, 44) : <Icone3D tipo="comps" size={44} />)}
+                      <span className="comp-btn-nome">
+                        {c.nome}{c.finalizada ? " (finalizada)" : ""}
+                        <small className="comp-sub">{rotuloSt}</small>
+                      </span>
+                    </button>
+                    {c.link && (
+                      <button className="comp-link-btn" onClick={() => window.open(c.link, "_blank", "noopener,noreferrer")}>
+                        <Icone3D tipo="web" size={26} />
+                        <span>CLASSIFICAÇÃO · {c.nome}</span>
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>)}
-
-            {competicoes.filter((c) => c.link).map((c) => (
-              <button className="btn-resenha comp-btn comp-btn-web" key={"web" + c.id}
-                onClick={() => window.open(c.link, "_blank", "noopener,noreferrer")}>
-                <Icone3D tipo="web" size={44} />
-                <span className="comp-btn-nome">
-                  Link da Classificação da {c.nome}
-                  <small className="comp-sub">Abre o site fora do app</small>
-                </span>
-              </button>
-            ))}
 
             {compPerguntaId && (() => {
               const cp = competicoes.find((x) => x.id === compPerguntaId);
@@ -4681,6 +4682,12 @@ export default function PalpitaoApp() {
                             <small className="comp-sub">{qtd} participante(s){pend > 0 ? ` · ${pend} aguardando` : ""}{c.link ? " · 🌐 link da classificação cadastrado" : " · sem link da classificação"}</small>
                           </span>
                         </button>
+                        {c.link && (
+                          <button className="comp-link-btn" onClick={() => window.open(c.link, "_blank", "noopener,noreferrer")}>
+                            <Icone3D tipo="web" size={26} />
+                            <span>CLASSIFICAÇÃO · {c.nome}</span>
+                          </button>
+                        )}
                         <div className="comp-acoes">
                           <button className="btn-promover" title="Editar nome, logo e link da classificação" onClick={() => { setCompRenomearId(c.id); setCompRenomearNome(c.nome); setCompRenomearLogo(undefined); setCompRenomearLink(c.link || ""); }}>Editar / Link</button>
                           {ehDono && c.id !== COMP_LEGADA_ID && (
