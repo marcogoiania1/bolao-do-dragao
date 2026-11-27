@@ -60,7 +60,7 @@ const ICONES3D_CORES = {
   grupo: ["#5BC0FF", "#1769D1"], aprovar: ["#6EE7A0", "#16994F"], times: ["#FF7A7A", "#B3141B"], jogos: ["#FFD36B", "#E08A00"],
   palpites: ["#7DE3FF", "#1C8FC9"], pontuacao: ["#FFE27A", "#E0A100"], classificacao: ["#B39DFF", "#5B3FD1"],
   desempenho: ["#6EE7C8", "#0E9C84"], hall: ["#FFB86B", "#E0610A"], perfil: ["#9AA9FF", "#3C4FD6"], comps: ["#FFD36B", "#C27A00"],
-  finalizar: ["#8E9AAF", "#2F3744"], campeao: ["#FFD36B", "#D9760A"], pdf: ["#FF6B6B", "#A81220"], liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
+  finalizar: ["#8E9AAF", "#2F3744"], campeao: ["#FFD36B", "#D9760A"], pessoa: ["#8FA6C8", "#46608A"], camera: ["#9AA7BA", "#47566E"], pdf: ["#FF6B6B", "#A81220"], liberar: ["#8CF08C", "#1F9E3A"], resultado: ["#FF8FA3", "#C21F45"], resenha: ["#FF5B5B", "#8E0F16"], backup: ["#8FB6FF", "#2B55C4"],
 };
 const ESTRELA_PTS = "32,25 33.65,29.74 38.66,29.84 34.66,32.87 36.11,37.66 32,34.8 27.89,37.66 29.34,32.87 25.34,29.84 30.35,29.74";
 function Icone3D({ tipo, size = 58, img }) {
@@ -146,6 +146,17 @@ function Icone3D({ tipo, size = 58, img }) {
           {[0, 1, 2, 3, 4].flatMap((i) => [0, 1, 2].map((j2) => ((i + j2) % 2 === 0
             ? <rect key={`${i}-${j2}`} x={21 + i * 6} y={14 + j2 * 7.330} width="6" height="7.330" fill="#1b2433" /> : null)))}
           <rect x="21" y="14" width="30" height="22" fill="none" stroke="#1b2433" strokeWidth="1" />
+        </>);
+      case "pessoa":
+        return (<>
+          <circle cx="32" cy="23" r="9.500" fill="url(#wg)" /><path d="M13 52c0-12 8-19 19-19s19 7 19 19z" fill="url(#wg)" />
+        </>);
+      case "camera":
+        return (<>
+          <path d="M22 15h20l3 6H19z" fill="#E4EAF2" />
+          <rect x="9" y="20" width="46" height="31" rx="7" fill="url(#wg)" />
+          <circle cx="32" cy="35.500" r="11" fill="#2b3548" /><circle cx="32" cy="35.500" r="7.500" fill="#4C79C8" /><circle cx="29" cy="32.500" r="2.500" fill="#fff" opacity=".7" />
+          <circle cx="48" cy="26" r="2" fill="#E5322D" />
         </>);
       case "campeao":
         return (<>
@@ -291,7 +302,7 @@ function classificarPalpite(pm, pv, rm, rv) {
 // selo de posição no ranking: coroa (1º), medalhas prata/bronze (2º/3º),
 // número em destaque (4º/5º) e número em vermelho pros 4 últimos colocados
 function RankBadge({ posicao, total }) {
-  if (posicao === 1) return <Crown size={24} color="#F2C230" />;
+  if (posicao === 1) return <Icone3D tipo="hall" size={28} />;
   if (posicao === 2) return <div className="rank-medalha rank-prata">2</div>;
   if (posicao === 3) return <div className="rank-medalha rank-bronze">3</div>;
   if (posicao === 4 || posicao === 5) return <span className="rank-destaque">{posicao}</span>;
@@ -1905,9 +1916,9 @@ export default function PalpitaoApp() {
     return (
       <div className="hall-podio">
         <div className="hall-podio-primeiro">
-          {mostrarCoroa && <Crown size={28} className="hall-coroa" />}
+          {mostrarCoroa && <span className="hall-coroa"><Icone3D tipo="hall" size={36} /></span>}
           <div className="hall-avatar hall-avatar-grande">
-            {primeiro.foto_url ? <img src={primeiro.foto_url} alt={primeiro.nome} /> : <UserIcon size={30} />}
+            {primeiro.foto_url ? <img src={primeiro.foto_url} alt={primeiro.nome} /> : <Icone3D tipo="pessoa" size={90} />}
           </div>
           <span className="hall-nome" title={primeiro.nome}>{primeiro.nome}</span>
           <span className="hall-pontos">{primeiro.pontos} pts</span>
@@ -1918,7 +1929,7 @@ export default function PalpitaoApp() {
               <div className="hall-card" key={p.id}>
                 <span className="hall-pos-badge">{i + 2}º</span>
                 <div className="hall-avatar">
-                  {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
+                  {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <Icone3D tipo="pessoa" size={46} />}
                 </div>
                 <span className="hall-nome" title={p.nome}>{p.nome}</span>
                 <span className="hall-pontos">{p.pontos} pts</span>
@@ -3058,6 +3069,8 @@ export default function PalpitaoApp() {
         .menu-item { display: flex; align-items: center; gap: 12px; background: rgba(247,245,239,0.05); border: 1px solid rgba(247,245,239,0.12);
           border-radius: 12px; padding: 13px 14px; cursor: pointer; text-align: left; color: var(--chalk); }
         .menu-item:hover { background: rgba(247,245,239,0.09); }
+        .avatar-3d { background: none !important; border: none !important; padding: 0; }
+        .menu-item-3d { background: none !important; width: 42px !important; height: 42px !important; }
         .menu-item-icon { width: 38px; height: 38px; border-radius: 10px; background: rgba(242,194,48,0.14); color: var(--floodlight);
           display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .menu-item-text { flex: 1; display: flex; flex-direction: column; gap: 2px; }
@@ -3761,7 +3774,7 @@ export default function PalpitaoApp() {
           <div className="screen">
             <button className="btn-voltar" onClick={() => setScreen(compAtivaId ? "menu" : "competicoesHome")}><ArrowLeft size={16} /> VOLTAR</button>
             <div className="resenha-topo">
-              {resenhaEscudo ? <img className="resenha-escudo" src={resenhaEscudo} alt="Escudo" /> : <div className="resenha-escudo resenha-escudo-vazio"><Shield size={26} /></div>}
+              {resenhaEscudo ? <img className="resenha-escudo" src={resenhaEscudo} alt="Escudo" /> : <Icone3D tipo="times" size={52} />}
               <h2 className="title" style={{ margin: 0 }}>RESENHA DO BOLÃO</h2>
             </div>
             {currentUser.is_admin && (
@@ -3784,7 +3797,7 @@ export default function PalpitaoApp() {
                 const podeApagar = currentUser.is_admin || minha;
                 return (
                   <div className={`chat-linha ${minha ? "minha" : ""}`} key={m.id}>
-                    {!minha && (conta && conta.foto_url ? <img className="chat-avatar" src={conta.foto_url} alt={m.autor} /> : <div className="chat-avatar chat-avatar-vazio"><UserIcon size={14} /></div>)}
+                    {!minha && (conta && conta.foto_url ? <img className="chat-avatar" src={conta.foto_url} alt={m.autor} /> : <Icone3D tipo="pessoa" size={26} />)}
                     <div className="chat-balao">
                       {!minha && <div className="chat-autor">{m.autor}</div>}
                       <div className="chat-texto">{m.texto}</div>
@@ -3841,7 +3854,7 @@ export default function PalpitaoApp() {
             {cadastroErro && <div className="msg-error"><AlertCircle size={15} />{cadastroErro}</div>}
             <div>
               <div className="foto-row">
-                <div className="foto-circle">{foto ? <img src={foto} alt="Prévia" /> : <Camera size={26} color="#7C9385" />}</div>
+                <div className="foto-circle">{foto ? <img src={foto} alt="Prévia" /> : <Icone3D tipo="camera" size={54} />}</div>
                 <button type="button" className="foto-btn" onClick={() => fileInputRef.current && fileInputRef.current.click()}>
                   <Camera size={14} /> {foto ? "Trocar foto" : "Tirar foto (opcional)"}
                 </button>
@@ -3897,7 +3910,7 @@ export default function PalpitaoApp() {
               {currentUser.foto_url ? (
                 <img className="avatar" src={currentUser.foto_url} alt={currentUser.nome} />
               ) : (
-                <div className="avatar avatar-vazio"><UserIcon size={22} /></div>
+                <div className="avatar avatar-vazio avatar-3d"><Icone3D tipo="pessoa" size={54} /></div>
               )}
               <div>
                 <div className="profile-name">{currentUser.nome}</div>
@@ -3911,7 +3924,7 @@ export default function PalpitaoApp() {
             <div className="comp-barra">
               <div className="comp-barra-centro">
                 <small>Competição</small>
-                {compAtiva && compAtiva.logo ? renderLogoComp(compAtiva, 72) : <Trophy size={40} color="#F2C230" />}
+                {compAtiva && compAtiva.logo ? renderLogoComp(compAtiva, 72) : <Icone3D tipo="comps" size={64} />}
                 <strong>{compNome}{compFinalizada ? " · FINALIZADA" : ""}</strong>
               </div>
               <button className="comp-trocar" onClick={irParaCompeticoes}>Trocar</button>
@@ -4091,7 +4104,7 @@ export default function PalpitaoApp() {
               {currentUser.foto_url ? (
                 <img className="avatar" src={currentUser.foto_url} alt={currentUser.nome} />
               ) : (
-                <div className="avatar avatar-vazio"><UserIcon size={22} /></div>
+                <div className="avatar avatar-vazio avatar-3d"><Icone3D tipo="pessoa" size={54} /></div>
               )}
               <div>
                 <div className="profile-name">{currentUser.nome}</div>
@@ -4131,7 +4144,7 @@ export default function PalpitaoApp() {
                   </div>
                 ) : (
                   <div className="list-item" key={u.id}>
-                    {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
+                    {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio avatar-3d"><Icone3D tipo="pessoa" size={34} /></div>}
                     <span className="n">{u.nome}</span>
                     {u.is_admin && <span className="tag-papel"><Shield size={11} /> {u.id === idDono ? "Administrador" : "Comissão"}</span>}
                     {currentUser.is_admin && u.id !== currentUser.id && (u.id !== idDono) && (
@@ -4204,7 +4217,7 @@ export default function PalpitaoApp() {
                       </div>
                     ) : (
                       <div className="list-item" key={u.id}>
-                        {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
+                        {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio avatar-3d"><Icone3D tipo="pessoa" size={34} /></div>}
                         <span className="n">{u.nome}</span>
                         <button className="btn-liberar-mini" onClick={() => handleAprovarParticipante(u.id)} disabled={aprovandoId === u.id}>
                           {aprovandoId === u.id ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Aprovar</>}
@@ -4226,7 +4239,7 @@ export default function PalpitaoApp() {
                   )}
                   {[...usersForaDaComp].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((u) => (
                     <div className="list-item" key={u.id}>
-                      {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
+                      {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio avatar-3d"><Icone3D tipo="pessoa" size={34} /></div>}
                       <span className="n">{u.nome}</span>
                       <button className="btn-liberar-mini" onClick={() => handleAprovarParticipante(u.id)} disabled={aprovandoId === u.id}>
                         {aprovandoId === u.id ? <Loader2 size={12} className="spin" /> : <><Check size={12} /> Adicionar</>}
@@ -4242,7 +4255,7 @@ export default function PalpitaoApp() {
                 <div className="list">
                   {[...usersComp].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).map((u) => (
                     <div className="list-item senha-reset" key={u.id}>
-                      {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio"><UserIcon size={15} /></div>}
+                      {u.foto_url ? <img src={u.foto_url} alt={u.nome} /> : <div className="avatar-mini-vazio avatar-3d"><Icone3D tipo="pessoa" size={34} /></div>}
                       <span className="n">{u.nome}</span>
                       {u.is_admin && <Shield size={13} color="#F2C230" />}
                       {u.id !== currentUser.id && u.id !== idDono && (confirmarRemoverMembroId === u.id ? (
@@ -4274,7 +4287,7 @@ export default function PalpitaoApp() {
               {currentUser.foto_url ? (
                 <img className="avatar" src={currentUser.foto_url} alt={currentUser.nome} />
               ) : (
-                <div className="avatar avatar-vazio"><UserIcon size={22} /></div>
+                <div className="avatar avatar-vazio avatar-3d"><Icone3D tipo="pessoa" size={54} /></div>
               )}
               <div>
                 <div className="profile-name">{currentUser.nome}</div>
@@ -4371,7 +4384,7 @@ export default function PalpitaoApp() {
                   <div className="field">
                     <label><Camera size={12} /> Logo oficial (opcional)</label>
                     <div className="comp-logo-linha">
-                      {compLogoForm ? <img className="comp-logo-prev" src={compLogoForm} alt="Logo" /> : <div className="comp-logo-prev comp-logo-vazio"><Trophy size={18} /></div>}
+                      {compLogoForm ? <img className="comp-logo-prev" src={compLogoForm} alt="Logo" /> : <Icone3D tipo="comps" size={44} />}
                       <label className="btn-liberar-mini comp-logo-btn">
                         {compLogoForm ? "Trocar imagem" : "Escolher imagem"}
                         <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleEscolherLogo(e, "novo")} />
@@ -4405,7 +4418,7 @@ export default function PalpitaoApp() {
                     if (compRenomearId === c.id) {
                       return (
                         <div className="list-item comp-edicao" key={c.id}>
-                          {(() => { const lg = compRenomearLogo === undefined ? c.logo : compRenomearLogo; return lg ? <img className="comp-logo-prev" src={lg} alt="Logo" /> : <div className="comp-logo-prev comp-logo-vazio"><Trophy size={16} /></div>; })()}
+                          {(() => { const lg = compRenomearLogo === undefined ? c.logo : compRenomearLogo; return lg ? <img className="comp-logo-prev" src={lg} alt="Logo" /> : <Icone3D tipo="comps" size={44} />; })()}
                           <label className="btn-liberar-mini comp-logo-btn">
                             Logo
                             <input type="file" accept="image/*" style={{ display: "none" }} onChange={(e) => handleEscolherLogo(e, "editar")} />
@@ -4680,7 +4693,7 @@ export default function PalpitaoApp() {
             <p className="pontuacao-legenda">Aposte no placar dos jogos ou veja os palpites de todos os participantes, rodada a rodada.</p>
 
             <button className="menu-item" onClick={() => { setParticipanteAlvoId(""); setScreen("palpites"); }}>
-              <span className="menu-item-icon"><Target size={18} /></span>
+              <span className="menu-item-icon menu-item-3d"><Icone3D tipo="palpites" size={42} /></span>
               <span className="menu-item-text">
                 <strong>Postar Palpites</strong>
                 <small>Aposte no placar de cada jogo</small>
@@ -4688,7 +4701,7 @@ export default function PalpitaoApp() {
               <ChevronRight size={16} />
             </button>
             <button className="menu-item" onClick={() => setScreen("palpitesVisualizar")}>
-              <span className="menu-item-icon"><ListChecks size={18} /></span>
+              <span className="menu-item-icon menu-item-3d"><Icone3D tipo="jogos" size={42} /></span>
               <span className="menu-item-text">
                 <strong>Palpites de Todos</strong>
                 <small>Veja o palpite de todo mundo em cada rodada já realizada</small>
@@ -4696,7 +4709,7 @@ export default function PalpitaoApp() {
               <ChevronRight size={16} />
             </button>
             <button className="menu-item" onClick={() => { setRodadaSelecionadaId(""); setScreen("rodada"); }}>
-              <span className="menu-item-icon"><Hash size={18} /></span>
+              <span className="menu-item-icon menu-item-3d"><Icone3D tipo="grupo" size={42} /></span>
               <span className="menu-item-text">
                 <strong>Palpites da Rodada</strong>
                 <small>Veja quem já apostou em cada jogo</small>
@@ -5218,14 +5231,14 @@ export default function PalpitaoApp() {
                 <>
                   {/* -------- Pódio geral (fixo, do início até a rodada mais recente) -------- */}
                   <div className="hall-secao">
-                    <div className="hall-titulo hall-titulo-ouro"><Crown size={14} /> Hall da Fama — Geral</div>
+                    <div className="hall-titulo hall-titulo-ouro"><Icone3D tipo="hall" size={26} /> Hall da Fama — Geral</div>
                     {renderPodioTop4(top4Geral)}
                   </div>
 
                   {/* -------- Top 4 por rodada (navega com as setas) -------- */}
                   {rodadaAtual && (
                     <div className="hall-secao">
-                      <div className="hall-titulo"><Trophy size={14} /> Top 4 da Rodada</div>
+                      <div className="hall-titulo"><Icone3D tipo="campeao" size={26} /> Top 4 da Rodada</div>
                       <div className="carrossel-nav">
                         <button className="carrossel-seta" onClick={() => setIndiceHallRodada((i) => Math.max(0, i - 1))} disabled={idxRodada === 0}>
                           <ChevronLeft size={18} />
@@ -5251,7 +5264,7 @@ export default function PalpitaoApp() {
                             <div className="hall-card hall-card-rebaixamento" key={p.id}>
                               <span className="hall-pos-badge hall-pos-badge-rebaixamento">{posicao}º</span>
                               <div className="hall-avatar">
-                                {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <UserIcon size={22} />}
+                                {p.foto_url ? <img src={p.foto_url} alt={p.nome} /> : <Icone3D tipo="pessoa" size={46} />}
                               </div>
                               <span className="hall-nome" title={p.nome}>{p.nome}</span>
                               <span className="hall-pontos">{p.pontos} pts</span>
@@ -5276,7 +5289,7 @@ export default function PalpitaoApp() {
             {perfilSucesso && <div className="msg-sucesso"><Check size={15} />{perfilSucesso}</div>}
 
             <div className="foto-row">
-              <div className="foto-circle">{fotoEdit ? <img src={fotoEdit} alt="Prévia" /> : <Camera size={26} color="#7C9385" />}</div>
+              <div className="foto-circle">{fotoEdit ? <img src={fotoEdit} alt="Prévia" /> : <Icone3D tipo="camera" size={54} />}</div>
               <button type="button" className="foto-btn" onClick={() => fileInputEditRef.current && fileInputEditRef.current.click()}>
                 <Camera size={14} /> {fotoEdit ? "Trocar foto" : "Adicionar foto"}
               </button>
@@ -5474,7 +5487,7 @@ export default function PalpitaoApp() {
             </p>
 
             <div className="backup-section">
-              <h3><Database size={14} style={{ verticalAlign: "middle", marginRight: 6 }} /> Exportar (deste link)</h3>
+              <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Icone3D tipo="backup" size={28} /> Exportar (deste link)</h3>
               <p className="backup-hint">
                 Gera um texto com todos os participantes, jogos e palpites cadastrados aqui. Copie e guarde —
                 você vai colar isso na tela de Importar do link novo.
@@ -5499,7 +5512,7 @@ export default function PalpitaoApp() {
             </div>
 
             <div className="backup-section">
-              <h3><Database size={14} style={{ verticalAlign: "middle", marginRight: 6 }} /> Importar (de outro link)</h3>
+              <h3 style={{ display: "flex", alignItems: "center", gap: 8 }}><Icone3D tipo="backup" size={28} /> Importar (de outro link)</h3>
               <div className="backup-aviso">
                 <AlertCircle size={14} />
                 <span>Atenção: importar <strong>sobrescreve</strong> todos os participantes, jogos e palpites que já estão neste link.</span>
